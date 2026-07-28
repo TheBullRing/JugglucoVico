@@ -739,6 +739,8 @@ public static native long getSensorStartmsec(long dataptr);
 //public static native void setnightscoutV3(boolean val);
 public static native boolean getnightscoutV3( );
 public static native long streamfromSensorptr(long sensorptr,int pos);
+/** Same packed-long protocol as streamfromSensorptr but reads NFC history entries. */
+public static native long historyfromSensorptr(long sensorptr,int pos);
 public static native int healthConnectfromSensorptr(long sensorptr);
 public static native void healthConnectWritten(long sensorptr,int pos);
 public static native void sethealthConnect(boolean val);
@@ -1041,12 +1043,11 @@ public static native boolean getisOval( );
 public static native void setradius(int val);
 public static native int getradius( );
 //s/^[	 ]*extern.*JNIEXPORT[         ]*\([a-zA-Z]*\)[ ]*JNICALL[      ]*fromjava(\([^)]*\)) *(JNIEnv[^,]*,[^,)]*[,)]\([^){]*\)[^a-zA-Z0-9]*$/public static native \1 \2(\3);/g
-
 public static native void isChinese(long dataptr);
-
 public static native void testLibre3( );
 
 public static native void setalarmSoundType(int val);
 public static native int getalarmSoundType( );
 }
+
 

@@ -431,6 +431,37 @@ extern "C" JNIEXPORT jlong JNICALL   fromjava(streamfromSensorptr)(JNIEnv *env, 
         }
     return ((jlong)len)<<48;
     }
+// Returns history (NFC scan) entries from the history circular buffer using the
+// same packed-long protocol as streamfromSensorptr:
+//   bits  0-31  → Unix time in seconds
+//   bits 32-47  → glucose value in mg/dL (calibrated if available)
+//   bits 48-63  → next pos to pass on the following call
+// When no more entries exist at or after pos, bits 0-31 are 0 and
+// bits 48-63 hold endhistory (the end boundary).
+extern "C" JNIEXPORT jlong JNICALL   fromjava(historyfromSensorptr)(JNIEnv *env, jclass cl,jlong sensorptr,int pos) {
+    if(!sensorptr)
+        return 0LL;
+    const auto *sens=reinterpret_cast<const SensorGlucoseData*>(sensorptr);
+    const int start=sens->getstarthistory();
+    const int end=sens->getAllendhistory();
+    auto cali=make_calibrator<Glucose>(sens);
+    const int from=(pos<start)?start:pos;
+    for(int i=from;i<end;i++) {
+        const Glucose *item=sens->getglucose(i);
+        if(!item->gettime())
+            continue;
+        long mgdL;
+        if(double calibrated=cali.calibrateONEtest(*item);!isnan(calibrated)) {
+            mgdL=(long)round(calibrated);
+            }
+        else
+            mgdL=item->getmgdL();
+        if(mgdL<=0)
+            continue;
+        return ((jlong)item->gettime())|((jlong)mgdL<<32)|((jlong)(i+1)<<48);
+        }
+    return ((jlong)end)<<48;
+    }
 void    sendstreaming(SensorGlucoseData *hist) {
     setstreaming(hist);
     backup->wakebackup(wakeall);

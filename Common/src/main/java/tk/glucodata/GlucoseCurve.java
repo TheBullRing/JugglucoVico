@@ -90,6 +90,16 @@ boolean statspresent=false;
 void summaryready() {
     statspresent=true;
     if(doLog) {Log.i(LOG_ID,"summaryready");};;
+    // Notify the Vico data layer so the chart refreshes immediately
+    // without waiting for the next heartbeat tick.
+    if(Applic.useVicoChart()) {
+        tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged();
+        // In the Vico path the GL canvas never draws, so the C++ badscanMessage()
+        // overlay is never rendered.  Show the scan result as a native View overlay
+        // that auto-dismisses after 8 seconds.
+        MainActivity act = (MainActivity) getContext();
+        Applic.RunOnUiThread(() -> MainActivity.showVicoScanResult(act));
+    }
     Applic.RunOnUiThread(()-> {
        if(doLog) {
            Log.i(LOG_ID,"UIThread summaryready");
@@ -368,10 +378,8 @@ public static int getwidth() {
     return width;
     }
 static void setgeo(int w,int h) {
-     if(smallScreen||w>=h) {
-        width=w;
-        height=h;
-        }
+    width=w;
+    height=h;
     }
 long multitime=0L;
     @Override
@@ -1151,9 +1159,30 @@ else {
         forward.setImageResource( R.drawable.baseline_navigate_next_white_36);
         forward.setOnClickListener(v-> {
         search(true) ;});
-
-
-    Layout layout=new Layout(context,(lay, w, h)->{
+    
+    
+        Object[][] searchLandscapeRows = new Object[][]{
+                new View[]{clear,under,line,above},
+                new View[]{getsearchspinner(context),scansearch},
+                new View[]{historysearch,historycalibratedsearch},
+                new View[]{streamsearch,streamcalibratedsearch},
+                new View[]{fromtime,totime,helpbut},
+                new View[]{backward,cancel, forward}
+        };
+        Object[][] searchPortraitRows = new Object[][]{
+                new View[]{clear},
+                new View[]{under},
+                new View[]{line,above},
+                new View[]{getsearchspinner(context),scansearch},
+                new View[]{historysearch},
+                new View[]{historycalibratedsearch},
+                new View[]{streamsearch},
+                new View[]{streamcalibratedsearch},
+                new View[]{fromtime,totime},
+                new View[]{helpbut},
+                new View[]{backward,cancel, forward}
+        };
+        Layout layout=new Layout(context,(lay, w, h)->{
     int width=GlucoseCurve.getwidth();
 
     int height=GlucoseCurve.getheight();
@@ -1207,7 +1236,7 @@ if(!smallScreen) {
       {if(doLog) {Log.i(LOG_ID,"smallScreen search h="+h+" height="+height+" w="+w+" width="+width+" posx="+xpos+" posy="+ypos);};};
         }
         return new int[] {w,h};
-        }, new Object[]{clear,new View[]{under,line,above}},new View[]{getsearchspinner(context),scansearch},new View[]{historysearch,historycalibratedsearch},new View[]{streamsearch,streamcalibratedsearch},new View[]{fromtime,totime,helpbut},new Object[] {new View[]{backward,cancel, forward}});
+        }, Layout.portraitRows(searchPortraitRows,searchLandscapeRows));
 
          mktimedialog( fromtime,0 ,layout);
       mktimedialog( totime,1 ,layout);
@@ -1287,7 +1316,7 @@ if(!isWearable) {
     }
     }
 void removeviews() {
-        numberview.deleteviews();    
+        numberview.deleteviews();
         searchspinner=null;
         if(search!=null) {
             removeContentView(search);
@@ -1296,6 +1325,14 @@ void removeviews() {
         if(searchcontrol!=null) {
             removeContentView(searchcontrol);
             searchcontrol=null;
+            }
+        if(numcontrol!=null) {
+            removeContentView(numcontrol);
+            numcontrol=null;
+            }
+        if(meallayout!=null) {
+            removeContentView(meallayout);
+            meallayout=null;
             }
        Applic.setremoveviews=false;
        }

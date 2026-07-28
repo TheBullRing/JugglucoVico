@@ -21,8 +21,6 @@
 
 package tk.glucodata.settings;
 
-import static android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
-import static android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
 import static android.content.pm.PackageManager.DONT_KILL_APP;
@@ -44,7 +42,6 @@ import static tk.glucodata.Log.doLog;
 import static tk.glucodata.Natives.getInvertColors;
 import static tk.glucodata.Natives.getRTL;
 import static tk.glucodata.Natives.getScheduleProfile;
-import static tk.glucodata.Natives.getalarmSoundType;
 import static tk.glucodata.Natives.getshowcalibratedstream;
 import static tk.glucodata.Natives.getshowhistories;
 import static tk.glucodata.Natives.getshownumbers;
@@ -60,10 +57,10 @@ import static tk.glucodata.util.getbutton;
 import static tk.glucodata.util.getcheckbox;
 import static tk.glucodata.util.getlabel;
 import static tk.glucodata.util.getlocale;
-import static tk.glucodata.util.getradiobuttonId;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import androidx.appcompat.app.AlertDialog;
 import android.app.Application;
 import android.content.ComponentName;
 import android.content.Context;
@@ -86,7 +83,6 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.Space;
 import android.widget.Spinner;
@@ -257,6 +253,8 @@ void finish() {
     settinglayout.setVisibility(GONE);
     
     try {
+        // Restore the orientation stored in native settings (may have been
+        // changed by the orientation spinner while Settings was open).
         activity.setRequestedOrientation(Natives.getScreenOrientation());
         }
         catch(       Throwable  error) {
@@ -268,6 +266,7 @@ void finish() {
        }
 //    if(editlabel!=null) removeContentView(editlabel) ;
     removeContentView(settinglayout);
+    settinglayout=null;
     thisone=null;
 
 
@@ -282,6 +281,12 @@ void finish() {
         }
         }
     activity.requestRender();
+    // In the Vico path requestRender() is a no-op; push a data refresh so that
+    // any settings changes (unit, thresholds, dark-mode, etc.) are applied
+    // to the chart immediately without waiting for the next heartbeat tick.
+    if(tk.glucodata.Applic.useVicoChart()) {
+        tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged();
+        }
     }
 
 //    Button deletelabel;
@@ -298,7 +303,16 @@ static int getbackgroundcolor(Context context) {
 }
 
 //HorizontalScrollView settinglayout=null;
-FrameLayout settinglayout=null;
+public static FrameLayout settinglayout=null;
+public static boolean isOpen() {
+    return settinglayout!=null&&settinglayout.getVisibility()==View.VISIBLE;
+    }
+public static void relayoutOpen() {
+    if(settinglayout!=null) {
+        settinglayout.scrollTo(0,0);
+        settinglayout.requestLayout();
+        }
+    }
     CheckDirectionRadio mmolL;
     CheckDirectionRadio mgdl;
 
@@ -655,7 +669,7 @@ static public void scheduleProfiles(MainActivity act,View parview) {
     recycle.setLayoutParams(new ViewGroup.LayoutParams( WRAP_CONTENT , WRAP_CONTENT));
     LinearLayoutManager lin = new LinearLayoutManager(act);
     recycle.setLayoutManager(lin);
-    View[][] views;
+    Object[][] views;
     if(isWearable) {
         views=new View[][]{new View[]{ok},new View[]{recycle},new View[]{newone}};
         }
@@ -746,17 +760,7 @@ static private void alarmsettings(MainActivity context,View parview) {
             });
 
 
-//    var usealarm=getcheckbox(context, R.string.USE_ALARM, Natives.getUSEALARM());
-
-    var alarmis=getlabel(context,R.string.alarmis);
-    var alarmtype=new RadioGroup(context);
-
-    int id=0;
-    alarmtype.addView(getradiobuttonId(context,R.string.alarm,id++));
-    alarmtype.addView(getradiobuttonId(context,R.string.notification,id++));
-    alarmtype.addView(getradiobuttonId(context,R.string.media,id++));
-    alarmtype.check(getalarmSoundType());
-
+    var usealarm=getcheckbox(context, R.string.USE_ALARM, Natives.getUSEALARM());
     final boolean alarmloss= Natives.hasalarmloss();
         CheckDirectionBox lossalarm = new CheckDirectionBox(context);
         lossalarm.setChecked(alarmloss); //Value
@@ -796,7 +800,7 @@ static private void alarmsettings(MainActivity context,View parview) {
 //    var Cancel=getbutton(context,R.string.cancel);
      var advanced=getbutton(context,R.string.advanced);
 //    var schedules=getbutton(context,R.string.schedules);
-    View[][] views;
+    Object[][] views;
     var spin=getProfileSpinner(context);
    int pos=Natives.getProfile();
     spin.setSelection(pos);
@@ -812,11 +816,11 @@ static private void alarmsettings(MainActivity context,View parview) {
         getMargins(Save).topMargin=pad;
         views=new View[][]{new View[]{ala},new View[]{spin},new View[]{lowalarm[0]},new View[]{lowalarm[1],lowalarm[2]}, new View[]{highalarm[0]},new View[]{highalarm[1],highalarm[2]},
 new View[]{lossalarm},new View[]{losswait,min,ringlossalarm},
-new View[]{isvalue},new View[]{ringisvalue},new View[]{alarmis,alarmtype},new View[]{advanced},new View[]{Save}};
+new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{advanced},new View[]{Save}};
         }
     else {
          View[] lostrow={lossalarm,losswait,min,ringlossalarm};
-         View[] row6={isvalue, ringisvalue,alarmis,alarmtype};
+         View[] row6={usealarm,isvalue, ringisvalue};
          View[] rowshow={help,spin,advanced,Save};
          var marg=(int)(GlucoseCurve.getwidth()*.05f);
 
@@ -871,10 +875,7 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{alarmis,alarmtype},new Vi
         removeContentView(lay) ;
         });
 */
-   // usealarm.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setUSEALARM(isChecked));
-      alarmtype.setOnCheckedChangeListener( (g,i)-> {
-            Natives.setalarmSoundType(i);
-         });
+    usealarm.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setUSEALARM(isChecked));
 
     BooleanSupplier saver=() -> {
       final boolean hasloss= lossalarm.isChecked();
@@ -1130,11 +1131,6 @@ Scans.setOnCheckedChangeListener( (buttonView,  isChecked) -> { Natives.setshows
         });
         var dexfuture=getcheckbox(context,R.string.dexfuture,Natives.getdexcomPredict());
          dexfuture.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setdexcomPredict(isChecked) );
-          CheckDirectionBox reverseorientation =getcheckbox(context,R.string.invertscreen,(Natives.getScreenOrientation()&SCREEN_ORIENTATION_REVERSE_LANDSCAPE)!=0);
-         reverseorientation.setOnCheckedChangeListener( (buttonView,  isChecked) ->  {
-                int ori= (isChecked?SCREEN_ORIENTATION_REVERSE_LANDSCAPE:SCREEN_ORIENTATION_LANDSCAPE);
-                Natives.setScreenOrientation(ori);
-                });
 
     CheckDirectionBox levelleft= new CheckDirectionBox(context);
     levelleft.setText(R.string.glucoseaxisleft);
@@ -1150,10 +1146,12 @@ Scans.setOnCheckedChangeListener( (buttonView,  isChecked) -> { Natives.setshows
 
         Layout.getMargins(close).setMarginEnd(amarg);
         var themebut=getbutton(context,R.string.theme);
+        Object[][] displayRowsLandscape = new Object[][]{graphrow,new View[]{scalelabel,fixatex, fixatey},targetrow,new View[]{threslabel,threshold,dexfuture},new View[] {levelleft},new View[] {hour12,langspin,iob,fixed},new View[]{colbut,themebut,help,close}};
+        Object[][] displayRowsPortrait = new Object[][]{graphrow,new View[]{scalelabel},new View[]{fixatex, fixatey},targetrow,new View[]{threslabel,threshold},new View[]{dexfuture},new View[] {levelleft},new View[] {hour12,langspin},new View[]{iob,fixed},new View[]{colbut,themebut},new View[]{help,close}};
         lay = new Layout(context, (l, w, h) -> {
                   int[] ret={w,h};
                  return ret;
-               },graphrow,new View[]{scalelabel,fixatex, fixatey},targetrow,new View[]{threslabel,threshold,dexfuture},new View[] {levelleft,reverseorientation},new View[] {hour12,langspin,iob,fixed},new View[]{colbut,themebut,help,close});
+               },Layout.portraitRows(displayRowsPortrait,displayRowsLandscape));
 
        themebut.setOnClickListener(v-> {
             SelectTheme.show(context,lay);
@@ -1350,7 +1348,7 @@ private    void mksettings(MainActivity context) {
     Button advanced=null;
 
 
-    View[][] views;
+    Object[][] views;
     final String advhelp=isWearable?null:Natives.advanced();
 
         var calibration=  getbutton(context,R.string.calibration);
@@ -1449,9 +1447,69 @@ private    void mksettings(MainActivity context) {
                 }
         floatconfig.setOnClickListener(v-> tk.glucodata.FloatingConfig.show(context,thelayout[0]));
 
+        // ── Screen rotation spinner ───────────────────────────────────────────
+        final int[] orientationValues  = {-1, 0, 8};
+        final int[] orientationLabels  = {R.string.orientation_free,
+                                          R.string.orientation_landscape,
+                                          R.string.orientation_reverse_landscape};
+        final int currentOrientation   = Natives.getScreenOrientation();
+        int orientInitPos = 0;
+        for (int i = 0; i < orientationValues.length; i++) {
+            if (orientationValues[i] == currentOrientation) { orientInitPos = i; break; }
+        }
+        final int orientInitPosFinal = orientInitPos;
+        var orientSpin = getGenSpin(context);
+        var orientLabels = new java.util.ArrayList<String>();
+        for (int lbl : orientationLabels) orientLabels.add(context.getString(lbl));
+        var orientAdapt = new LabelAdapter<String>(context, orientLabels, 0);
+        orientSpin.setAdapter(orientAdapt);
+        orientSpin.setSelection(orientInitPosFinal);
+        orientSpin.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                int val = orientationValues[position];
+                Natives.setScreenOrientation(val);
+                context.setRequestedOrientation(val);
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        var orientLabel = getlabel(context, R.string.screen_rotation);
+        // Orientation control only applies to Vico UI — old UI is always landscape.
+        if (!tk.glucodata.Applic.useVicoChart()) {
+            orientLabel.setVisibility(GONE);
+            orientSpin.setVisibility(GONE);
+        }
+
+        // ── Chart UI toggle: Vico (new) vs OpenGL/NanoVG (legacy) ─────────────
+        var vicoToggle = getcheckbox(context, R.string.use_vico_chart,
+                tk.glucodata.Applic.useVicoChart());
+        vicoToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            tk.glucodata.Applic.setUseVicoChart(isChecked);
+            closeview();
+            context.recreate();
+        });
+
         View[] rowglu=new View[]{floatconfig,calibration,glucosenotify};
 //        View[] rowglu=new View[]{floatconfig,glucosenotify};
-        views=new View[][]{row0, hasnfc?new View[]{nfcsound, globalscan,camera}:null,rowglu,new View[]{exchanges,numalarm,alarmbut},numdis, row9};
+        final Object[][] portraitViews=new Object[][]{
+                new View[]{row0[0]},          // unitlabel
+                isWearable ? null : new View[]{row0[1], row0[2]}, // mmolL, mgdl
+                hasnfc?new View[]{nfcsound, globalscan}:null,
+                hasnfc&&camera!=null?new View[]{camera}:null,
+                new View[]{floatconfig},
+                new View[]{orientLabel, orientSpin},
+                new View[]{vicoToggle},
+                new View[]{calibration},
+                new View[]{glucosenotify},
+                new View[]{exchanges},
+                new View[]{numalarm},
+                new View[]{alarmbut},
+                numdis,
+                row9
+        };
+        final Object[][] landscapeViews=new Object[][]{row0, hasnfc?new View[]{nfcsound, globalscan,camera}:null,new View[]{orientLabel,orientSpin},new View[]{vicoToggle},rowglu,new View[]{exchanges,numalarm,alarmbut},numdis, row9};
+        views=Layout.portraitRows(portraitViews,landscapeViews);
         }
 
     help.setFocusableInTouchMode(true);
@@ -1492,7 +1550,6 @@ private    void mksettings(MainActivity context) {
     scroller.setSmoothScrollingEnabled(false);
    scroller.setVerticalScrollBarEnabled(Applic.scrollbar);
    scroller.setScrollbarFadingEnabled(true);//Crash with NestedScrollView
-    scroller.setFillViewport(true);
     scroller.setPadding(0,0,0,0);
 
    settinglayout=scroller;
@@ -1526,6 +1583,10 @@ private    void mksettings(MainActivity context) {
         settinglayout.bringToFront();
     }
 
+// Scroll to top after the first layout pass so 'help' focus doesn't
+// auto-scroll to the bottom row.
+final FrameLayout sl = settinglayout;
+sl.post(() -> sl.scrollTo(0, 0));
 setvalues();
 }
 

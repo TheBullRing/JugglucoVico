@@ -74,6 +74,10 @@
     <string name="patchedlibrebroadcast">Libre parcheado</string>
     <string name="disablecamerakey">Desactivar tecla de cámara</string>
     <string name="invertscreen">Invertir pantalla</string>
+    <string name="orientation_landscape">Horizontal</string>
+    <string name="orientation_reverse_landscape">Horizontal invertido</string>
+    <string name="orientation_free">Rotación libre</string>
+    <string name="screen_rotation">Rotación de pantalla</string>
     <string name="nfcsound">Sonido NFC</string>
     <string name="manuallyscale">Escala manual </string>
     <string name="time">Hora</string>

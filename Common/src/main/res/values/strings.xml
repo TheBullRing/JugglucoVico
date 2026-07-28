@@ -80,6 +80,11 @@
  <string name="patchedlibrebroadcast">Patched Libre</string>
  <string name="disablecamerakey">Disable camera key</string>
  <string name="invertscreen">Rotate 180°</string>
+ <string name="orientation_landscape">Landscape</string>
+ <string name="orientation_reverse_landscape">Reverse landscape</string>
+ <string name="orientation_free">Free rotation</string>
+ <string name="screen_rotation">Screen rotation</string>
+ <string name="use_vico_chart">Use new chart (Vico)</string>
  <string name="nfcsound">NFC sound</string>
  <string name="manuallyscale">Manually scale </string>
  <string name="time">Time</string>
@@ -505,5 +510,12 @@
     <string name="media">Media</string>
     <string name="notification">Notification</string>
     <string name="alarmis">Alarm is</string>
+    <string name="USE_ALARM">Alarm is alarm</string>
     <string name="deletemeter">Remove meter information. Measurements will remain.</string>
+
+    <!-- Portrait menu tab labels -->
+    <string name="menus_tab_system">System</string>
+    <string name="menus_tab_data">Data</string>
+    <string name="menus_tab_nav">Navigate</string>
+
 </resources>

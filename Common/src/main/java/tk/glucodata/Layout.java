@@ -105,6 +105,32 @@ static final View.AccessibilityDelegate accessDeli = new View.AccessibilityDeleg
 };
 //    public Layout(Context context) { super(context); } public Layout(Context context, AttributeSet attrs) { super(context, attrs); } public Layout(Context context, AttributeSet attrs, int defStyle) { super(context, attrs, defStyle); } 
 private static final String LOG_ID="Layout";
+private static final int PORTRAIT_WRAP_FACTOR = 95;
+
+public static boolean shouldPortraitStack() {
+    if (Applic.isWearable) return false;
+    // Use Configuration orientation — it is updated by the OS before
+    // onConfigurationChanged fires and is reliable on the UI thread even
+    // before the GL surface has been resized (GlucoseCurve.width/height
+    // are only updated from the GL thread in onSurfaceChanged, so they
+    // may still carry pre-rotation values when menus are being rebuilt).
+    android.content.Context ctx = Applic.getContext();
+    if (ctx != null) {
+        int orient = ctx.getResources().getConfiguration().orientation;
+        return orient == android.content.res.Configuration.ORIENTATION_PORTRAIT;
+    }
+    // Fallback to GL dimensions if no context is available yet.
+    return GlucoseCurve.getheight() > GlucoseCurve.getwidth();
+    }
+public static Object[][] portraitRows(Object[][] portrait, Object[][] landscape) {
+    return shouldPortraitStack()?portrait:landscape;
+    }
+public static Object[] portraitRow(Object[] portrait, Object[] landscape) {
+    return shouldPortraitStack()?portrait:landscape;
+    }
+private int portraitWrapWidth(int width) {
+    return (width*PORTRAIT_WRAP_FACTOR)/100;
+    }
 
  private   void reserve(int nr) {
     rowend=new int[nr];

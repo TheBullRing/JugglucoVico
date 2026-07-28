@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- IDs used only in layout-port/menus.xml portrait tab navigation -->
+<resources>
+    <item name="menus_flipper" type="id"/>
+    <item name="menus_tab_bar" type="id"/>
+    <item name="tab_btn_0"     type="id"/>
+    <item name="tab_btn_1"     type="id"/>
+    <item name="tab_btn_2"     type="id"/>
+</resources>

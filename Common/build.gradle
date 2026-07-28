@@ -1,6 +1,6 @@
 plugins {
     id 'com.android.application'
-//    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.3.20'
 //    id "io.freefair.lombok" version "8.0.0-rc2"
 }
 
@@ -43,6 +43,11 @@ android {
         buildConfig = true
         aidl = true
         viewBinding = true
+        compose = true
+    }
+    composeOptions {
+        // kotlinCompilerExtensionVersion is not needed with Kotlin 2.x + Compose plugin;
+        // the Compose compiler is bundled in the plugin (2.3.20 → Compose 1.7.x).
     }
     externalNativeBuild {
         cmake {
@@ -264,10 +269,11 @@ flavorDimensions = ['wearos','libreVersion','SiBionics', 'DexCom','Google']
                 }
         }
        mobile {
-//        minSdk 19
             dimension 'wearos'
            versionNameSuffix '-phone'
            buildConfigField 'int', 'isWear', '0'
+           // Vico 3.x requires minSdk 23; the mobile flavor is the only one using Vico.
+           minSdk = 23
         }
     }
 
@@ -618,6 +624,12 @@ configurations.all {
 dependencies {
   coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
+  // ── Unit test (JVM) ──────────────────────────────────────────────────────
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+  testImplementation 'app.cash.turbine:turbine:1.2.0'
+  testImplementation 'org.jetbrains.kotlin:kotlin-test:2.3.20'
+
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'androidx.startup:startup-runtime:1.2.0'
 //  implementation 'com.android.support:support-annotations:28.0.0'
@@ -639,6 +651,23 @@ implementation "androidx.appcompat:appcompat:1.6.1"
 //    implementation "com.google.android.gms:play-services-base:18.8.0"
  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
   mobileImplementation 'androidx.health.connect:connect-client:1.1.0-rc03'
+  mobileImplementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.1'
+
+  // ── Compose (mobile flavor only) ──────────────────────────────────────────
+  mobileImplementation platform('androidx.compose:compose-bom:2025.06.01')
+  mobileImplementation 'androidx.compose.ui:ui'
+  mobileImplementation 'androidx.compose.ui:ui-tooling-preview'
+  mobileImplementation 'androidx.compose.material3:material3'
+  mobileImplementation 'androidx.activity:activity-compose:1.11.0'
+  mobileImplementation 'androidx.lifecycle:lifecycle-runtime-compose:2.9.1'
+  debugImplementation 'androidx.compose.ui:ui-tooling'
+
+  // ── Vico (mobile flavor only) ─────────────────────────────────────────────
+  // compose-android provides LineCartesianLayerKt (rememberLine, rememberLineCartesianLayer).
+  // compose-m3 provides M3-themed marker, axis, and chart defaults.
+  // Both are required — compose-m3 does NOT re-export compose-android's top-level functions.
+  mobileImplementation 'com.patrykandpatrick.vico:compose-android:3.2.3'
+  mobileImplementation 'com.patrykandpatrick.vico:compose-m3:3.2.3'
 //  mobileImplementation files('/n/ojka/Downloads/ciq-companion-app-sdk-2.0.3.aar');
   mobileImplementation 'com.garmin.connectiq:ciq-companion-app-sdk:2.4.0@aar'
 

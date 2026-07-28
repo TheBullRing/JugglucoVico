@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Portrait variant of bluesensor.xml.
+  Keeps R.id.hori as a HorizontalScrollView (required by bluediag.java cast)
+  but adds a vertical ScrollView inside so all content is reachable without
+  horizontal scrolling. On a narrow screen this makes all rows visible.
+  All view IDs are identical to the landscape layout.
+-->
+<HorizontalScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/hori"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:id="@+id/grid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:id="@+id/bluestate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingBottom="4dp">
+                <Button android:id="@+id/info" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/info" />
+                <Button android:id="@+id/finish" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/finish" />
+                <FrameLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                    <tk.glucodata.CheckDirectionBox android:id="@+id/streamhistory" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/streamhistory" />
+                    <tk.glucodata.CheckDirectionBox android:id="@+id/alarmclock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" android:text="@string/alarmclock" />
+                    <Button android:id="@+id/resetbutton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" android:text="@string/resetname" />
+                    <Button android:id="@+id/divorcebutton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" android:text="@string/divorcename" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <Button android:id="@+id/locationpermission" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/scan_permission" />
+
+            <TextView android:id="@+id/scan" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="4dp" android:paddingBottom="4dp" android:text="" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="4dp">
+                <Spinner android:id="@+id/sensors" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <TextView android:id="@+id/deviceaddress" android:background="@android:color/black" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="4dp">
+                <Button android:id="@+id/forget" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/forget" />
+                <TextView android:id="@+id/streaming" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" />
+                <Button android:id="@+id/clear" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/clear" />
+            </LinearLayout>
+
+            <!-- Stats rows (stage / success / failure / info) -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="2dp">
+                <TextView android:id="@+id/stage" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/stage" />
+                <TextView android:id="@+id/textView2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/last_success" />
+                <TextView android:id="@+id/textView3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/last_failure" />
+                <TextView android:id="@+id/textView4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2" android:text="@string/failure_info" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="2dp">
+                <TextView android:id="@+id/connection" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/connection" />
+                <TextView android:id="@+id/consuccess" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <TextView android:id="@+id/confail" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <TextView android:id="@+id/constatus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="2dp">
+                <TextView android:id="@+id/disconnectsensor" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/unlock_key" />
+                <TextView android:id="@+id/keysuccess" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <TextView android:id="@+id/keyfailure" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <TextView android:id="@+id/keyinfo" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="4dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/glucose_value" />
+                <TextView android:id="@+id/glucosesuccess" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <TextView android:id="@+id/glucosefailure" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <TextView android:id="@+id/glucoseinfo" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2" />
+            </LinearLayout>
+
+            <!-- Bottom controls: split into 2 rows for portrait -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="2dp">
+                <Button android:id="@+id/help" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/helpname" />
+                <tk.glucodata.CheckDirectionBox android:id="@+id/usebluetooth" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/use_bluetooth" />
+                <Button android:id="@+id/background" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/dozemode" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="4dp">
+                <tk.glucodata.CheckDirectionBox android:id="@+id/priority" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/high_priority" />
+                <tk.glucodata.CheckDirectionBox android:id="@+id/android13" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/android13" />
+                <Button android:id="@+id/close" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/closename" />
+            </LinearLayout>
+
+            <TextView android:id="@+id/rssi" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="10sp" android:padding="0dp" android:text="RSSI" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</HorizontalScrollView>
