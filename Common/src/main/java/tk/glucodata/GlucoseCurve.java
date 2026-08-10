@@ -379,6 +379,28 @@ public static int getheight() {
 public static int getwidth() {
     return width;
     }
+public static int getheight(Context context) {
+    int current=context.getResources().getDisplayMetrics().heightPixels;
+    return current>0?current:height;
+    }
+public static int getwidth(Context context) {
+    int current=context.getResources().getDisplayMetrics().widthPixels;
+    return current>0?current:width;
+    }
+public static boolean isLandscape(Context context) {
+    int orientation=context.getResources().getConfiguration().orientation;
+    if(orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+        return true;
+    if(orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT)
+        return false;
+    return getwidth(context)>getheight(context);
+    }
+void configurationChanged(MainActivity activity) {
+    numberview.configurationChanged(activity);
+    // Reposition floating overlays after a configuration change (e.g. rotation).
+    if (search != null) search.post(search::requestLayout);
+    if (searchcontrol != null) searchcontrol.post(searchcontrol::requestLayout);
+    }
 static void setgeo(int w,int h) {
     width=w;
     height=h;

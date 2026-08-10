@@ -42,11 +42,11 @@ typedef const char *charptr_t;
 typedef std::pair<std::string_view,std::string_view> errortype;
 #endif
 struct jugglucotext {
-char daylabel[7][16];
+char daylabel[7][20];
 #ifdef INJUGGLUCO
-const char speakdaylabel[7][25];
+const char speakdaylabel[7][56];
 #endif
-char monthlabel[12][16];
+char monthlabel[12][20];
 #ifdef INJUGGLUCO
 std::string_view scanned;
 std::string_view readysecEnable;
