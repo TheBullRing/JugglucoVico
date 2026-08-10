@@ -2051,14 +2051,28 @@ private static void applyInsetsToOverlay(View view) {
         Insets sys = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() |
                 WindowInsetsCompat.Type.displayCutout());
-        // Preserve any horizontal/bottom padding already set by the caller
-        // (spacing, density-based margins) — only override top padding which
-        // is the one that gets hidden behind notch / status bar.
-        v.setPadding(
-                Math.max(v.getPaddingLeft(),   sys.left),
-                Math.max(v.getPaddingTop(),    sys.top),
-                Math.max(v.getPaddingRight(),  sys.right),
-                Math.max(v.getPaddingBottom(), sys.bottom));
+        // Do NOT apply padding to the root MATCH_PARENT view itself — that
+        // would make it look smaller than the full screen.  Instead forward
+        // the insets to direct children so THEY offset their content, while
+        // the root view (and its background) continues to fill the whole window.
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup vg = (android.view.ViewGroup) v;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                View child = vg.getChildAt(i);
+                child.setPadding(
+                        Math.max(child.getPaddingLeft(),   sys.left),
+                        Math.max(child.getPaddingTop(),    sys.top),
+                        Math.max(child.getPaddingRight(),  sys.right),
+                        Math.max(child.getPaddingBottom(), sys.bottom));
+            }
+        } else {
+            // Leaf view: apply directly (rare case)
+            v.setPadding(
+                    Math.max(v.getPaddingLeft(),   sys.left),
+                    Math.max(v.getPaddingTop(),    sys.top),
+                    Math.max(v.getPaddingRight(),  sys.right),
+                    Math.max(v.getPaddingBottom(), sys.bottom));
+        }
         return WindowInsetsCompat.CONSUMED;
     });
     ViewCompat.requestApplyInsets(view);
