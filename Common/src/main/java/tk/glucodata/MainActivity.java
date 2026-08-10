@@ -26,6 +26,7 @@ import static android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTIN
 import static android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM;
 import static android.view.View.GONE;
 import static androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener;
+import androidx.core.view.ViewCompat;
 import static tk.glucodata.Applic.DontTalk;
 import static tk.glucodata.Applic.RunOnUiThread;
 import static tk.glucodata.Applic.TargetSDK;
@@ -2017,13 +2018,51 @@ public static void addMyContentView(Activity context,View view, ViewGroup.Layout
     context.addContentView(view,params);
     if(Applic.DynamicTheme)
             DynamicThemeUtils.applyTheme(view);
+    // In the Vico path (EdgeToEdge active) full-screen overlays need their own
+    // insets listener because they sit above the ComposeView window hierarchy.
+    // Only MATCH_PARENT views need this — WRAP_CONTENT popups self-position.
+    if(Applic.useVicoChart()
+            && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
+            && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
+        applyInsetsToOverlay(view);
+    }
     }
 
 public void addMyContentView(View view, ViewGroup.LayoutParams params) {
     addContentView(view,params);
     if(Applic.DynamicTheme)
         DynamicThemeUtils.applyTheme(view);
+    // Same insets guard as the static variant above.
+    if(Applic.useVicoChart()
+            && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
+            && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
+        applyInsetsToOverlay(view);
     }
+    }
+
+/**
+ * Attaches a WindowInsets listener to a full-screen overlay view so it correctly
+ * clears the status bar, notch and navigation bar in the Vico/EdgeToEdge path.
+ * The listener replaces any static padding that was calculated from the stale
+ * systembarTop/Left/Right/Bottom fields.
+ */
+private static void applyInsetsToOverlay(View view) {
+    ViewCompat.setOnApplyWindowInsetsListener(view, (v, insets) -> {
+        Insets sys = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() |
+                WindowInsetsCompat.Type.displayCutout());
+        // Preserve any horizontal/bottom padding already set by the caller
+        // (spacing, density-based margins) — only override top padding which
+        // is the one that gets hidden behind notch / status bar.
+        v.setPadding(
+                Math.max(v.getPaddingLeft(),   sys.left),
+                Math.max(v.getPaddingTop(),    sys.top),
+                Math.max(v.getPaddingRight(),  sys.right),
+                Math.max(v.getPaddingBottom(), sys.bottom));
+        return WindowInsetsCompat.CONSUMED;
+    });
+    ViewCompat.requestApplyInsets(view);
+}
 
 /**
  * Show the NFC scan result as a centred View overlay for 8 seconds.
