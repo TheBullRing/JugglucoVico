@@ -1,337 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<GridLayout
+<!--
+  Landscape menu: 4-column ScrollView grid.
+  Replaces the old fixed 7x7 GridLayout that clipped button text.
+  All buttons use wrap_content height so text never wraps awkwardly,
+  and the ScrollView handles overflow if the screen is short.
+  IDs are identical to layout-port/menus.xml so VicoMenus.java and
+  Menus.java work with both layout qualifiers without changes.
+-->
+<ScrollView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/menusview"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:columnCount="7"
-    android:rowCount="7"
-    android:textAlignment="textStart"
-    >
+    android:fillViewport="true">
 
-    <CheckBox
-        android:id="@+id/systemui"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="0"
-        android:layout_column="0"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/system_ui" />
-    <CheckBox
-        android:id="@+id/menus"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="1"
-        android:layout_column="0"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-	android:checked="true"
-        android:text="@string/menus" />
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:columnCount="4"
+        android:useDefaultMargins="false">
 
-    <Button
-        android:id="@+id/watch"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="2"
+        <!-- Row 0: Ver / actions -->
+        <CheckBox android:id="@+id/systemui"          android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/system_ui" />
+        <CheckBox android:id="@+id/menus"             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:checked="true" android:text="@string/menus" />
+        <Button   android:id="@+id/watch"             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/watches" />
+        <Button   android:id="@+id/sensor"            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/sensor" />
 
-        android:layout_column="0"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/watches" />
+        <!-- Row 1 -->
+        <Button   android:id="@+id/settings"          android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/settings" />
+        <Button   android:id="@+id/about"             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/aboutname" />
+        <Button   android:id="@+id/export"            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/export" />
+        <Button   android:id="@+id/mirror"            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/mirror" />
 
-    <Button
-        android:id="@+id/sensor"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="3"
+        <!-- Row 2 -->
+        <Button   android:id="@+id/newamount"         android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/new_amount" />
+        <Button   android:id="@+id/list"              android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/list" />
+        <Button   android:id="@+id/statistics"        android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/statistics" />
+        <Button   android:id="@+id/talk"              android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/talk" />
 
-        android:layout_column="0"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/sensor" />
+        <!-- Row 3 -->
+        <Button   android:id="@+id/lastscan"          android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/last_scan" />
+        <Button   android:id="@+id/now"               android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/now" />
+        <Button   android:id="@+id/search"            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/search" />
+        <Button   android:id="@+id/date"              android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/date" />
 
-    <Button
-        android:id="@+id/settings"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="4"
+        <!-- Row 4 -->
+        <Button   android:id="@+id/dayback"           android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/day_back" />
+        <Button   android:id="@+id/daylater"          android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/day_later" />
+        <Button   android:id="@+id/weekback"          android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/week_back" />
+        <Button   android:id="@+id/weeklater"         android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/week_later" />
 
-        android:layout_column="0"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/settings" />
+        <!-- Row 5: checkboxes -->
+        <CheckBox android:id="@+id/scans"             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/scansname" />
+        <CheckBox android:id="@+id/calibratedscans"   android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="" />
+        <CheckBox android:id="@+id/stream"            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/streamname" />
+        <CheckBox android:id="@+id/calibratedstream"  android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="" />
 
-    <Button
-        android:id="@+id/about"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="5"
+        <!-- Row 6 -->
+        <CheckBox android:id="@+id/history"           android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/historyname" />
+        <CheckBox android:id="@+id/calibratedhistory" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="" />
+        <CheckBox android:id="@+id/amounts"           android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/amountsname" />
+        <CheckBox android:id="@+id/meals"             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/mealsname" />
 
-        android:layout_column="0"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/aboutname" />
+        <!-- Row 7 -->
+        <CheckBox android:id="@+id/darkmode"          android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/darkmode" />
+        <CheckBox android:id="@+id/glucosefloat"      android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:paddingStart="8dp" android:text="@string/floatname" />
+        <Button   android:id="@+id/close"             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_columnWeight="1" android:minHeight="52dp" android:text="@string/closename" />
+        <Space    android:layout_width="0dp"           android:layout_height="0dp" android:layout_columnWeight="1" />
 
+    </GridLayout>
 
-
-    <Button
-        android:id="@+id/close"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="6"
-        android:layout_column="0"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/closename" />
-
-    <Space
-        android:layout_width="0dp"
-        android:layout_column="1"
-
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-
-        />
-
-    <Button
-        android:id="@+id/export"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="0"
-
-        android:layout_column="2"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/export" />
-
-    <Button
-        android:id="@+id/mirror"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="1"
-
-        android:layout_column="2"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/mirror" />
-
-    <Button
-        android:id="@+id/newamount"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="2"
-        android:layout_column="2"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/new_amount" />
-    <Button
-        android:id="@+id/list"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="3"
-        android:layout_column="2"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/list" />
-
-    <Button
-        android:id="@+id/statistics"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="4"
-
-        android:layout_column="2"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/statistics" />
-
-    <Button
-        android:id="@+id/talk"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="5"
-
-        android:layout_column="2"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/talk" />
-
-    <CheckBox
-        android:id="@+id/glucosefloat"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="6"
-
-        android:layout_column="2"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/floatname" />
-
-    <Space
-        android:layout_width="0dp"
-        android:layout_column="3"
-
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-
-        />
-
-    <Button
-        android:id="@+id/lastscan"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="0"
-        android:layout_column="4"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/last_scan" />
-    <CheckBox
-        android:id="@+id/scans"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="1"
-        android:layout_column="4"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/scansname" />
-    <CheckBox
-        android:id="@+id/stream"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="2"
-        android:layout_column="4"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/streamname" />
-    <CheckBox
-        android:id="@+id/history"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="3"
-        android:layout_column="4"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/historyname" />
-    <CheckBox
-        android:id="@+id/amounts"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="4"
-        android:layout_column="4"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/amountsname" />
-    <CheckBox
-        android:id="@+id/meals"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="5"
-        android:layout_column="4"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/mealsname" />
-    <CheckBox
-        android:id="@+id/darkmode"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="6"
-        android:layout_column="4"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/darkmode" />
-
-    <CheckBox
-        android:id="@+id/calibratedscans"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="1"
-        android:layout_column="5"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="" />
-
-    <CheckBox
-        android:id="@+id/calibratedstream"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="2"
-        android:layout_column="5"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="" />
-
-    <CheckBox
-        android:id="@+id/calibratedhistory"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="3"
-        android:layout_column="5"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="" />
-
-    <Button
-        android:id="@+id/now"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="0"
-        android:layout_column="6"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/now" />
-    <Button
-        android:id="@+id/search"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="1"
-        android:layout_column="6"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/search" />
-    <Button
-        android:id="@+id/date"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="2"
-        android:layout_column="6"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/date" />
-    <Button
-        android:id="@+id/dayback"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="3"
-        android:layout_column="6"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/day_back" />
-    <Button
-        android:id="@+id/daylater"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="4"
-        android:layout_column="6"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/day_later" />
-    <Button
-        android:id="@+id/weekback"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="5"
-        android:layout_column="6"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/week_back" />
-    <Button
-        android:id="@+id/weeklater"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_row="6"
-        android:layout_column="6"
-        android:layout_columnWeight="1"
-        android:layout_rowWeight="1"
-        android:text="@string/week_later" />
-</GridLayout>
+</ScrollView>
