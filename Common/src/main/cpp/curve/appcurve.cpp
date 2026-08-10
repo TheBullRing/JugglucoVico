@@ -1,4 +1,4 @@
-
+﻿
 #include <GLES2/gl2.h>
 #include "config.h"
 #include "SensorGlucoseData.hpp"
@@ -51,7 +51,6 @@ extern bool speakout;
 
 
 bool emptytap=false;
-extern bool fixatex,fixatey;
 extern std::vector<shownglucose_t> shownglucose;
 extern void setusedsensors(uint32_t nu) ;
 
@@ -1753,12 +1752,12 @@ void setnowmenu(time_t nu) {
 const int  trend=lastin->tr;
 //const int  trend=5;
 
-constexpr const char arrows[][sizeof("→")]{"   ",
-"↓",
-"↘",
-"→",
-"↗",
-"↑"}; 
+constexpr const char arrows[][sizeof("ΓåÆ")]{"   ",
+"Γåô",
+"Γåÿ",
+"ΓåÆ",
+"Γåù",
+"Γåæ"}; 
 
 char *aftertime=hourminstr+timelen;
 #if __NDK_MAJOR__ >= 26
@@ -2112,7 +2111,7 @@ void JCurve::showtext(NVGcontext* avg, time_t nu, int menu) {
     nvgFontFaceId(avg, menufont);
     nvgFontSize(avg, menusize);
 
-    constexpr const char preset[]   = "✓  ";
+    constexpr const char preset[]   = "Γ£ô  ";
     constexpr const char preunset[] = "-     ";
     constexpr int presetlen = sizeof(preset) - 1;
 

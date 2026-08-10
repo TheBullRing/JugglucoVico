@@ -1,4 +1,4 @@
-
+﻿
 #ifdef LIBRE3
 /*      This file is part of Juggluco, an Android app to receive and display         */
 /*      glucose values from Freestyle Libre 2 and 3 sensors.                         */
@@ -57,10 +57,12 @@ extern "C" JNIEXPORT  void JNICALL fromjava(setLibre3kAuth)(JNIEnv *env, jclass 
     }
 
 extern "C" JNIEXPORT  jbyteArray JNICALL fromjava(getLibre3kAuth)(JNIEnv *env, jclass thiz, jlong sensorptr) {
+/*
     #ifndef NOLOG
     LOGAR("TESTING: getLibre3kAuth()==null");
     return nullptr;
     #endif 
+    */
     SensorGlucoseData *sens=reinterpret_cast<SensorGlucoseData *>(sensorptr);
     if(!sens) {
         LOGAR("getLibre3kAuth sensorptr==null");

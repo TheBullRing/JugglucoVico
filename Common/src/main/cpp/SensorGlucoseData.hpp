@@ -1,4 +1,4 @@
-/*      This file is part of Juggluco, an Android app to receive and display         */
+﻿/*      This file is part of Juggluco, an Android app to receive and display         */
 /*      glucose values from Freestyle Libre 2 and 3 sensors.                         */
 /*                                                                                   */
 /*      Copyright (C) 2021 Jaap Korthals Altes <jaapkorthalsaltes@gmail.com>         */
@@ -350,6 +350,18 @@ struct Calibraties {
           }
  } ;//__attribute__ ((packed)) ;
 
+inline static bool        valid16name(const char *name) {
+        const char *end=name+16;
+        for(const char *ptr=name;ptr<end;++ptr) {
+                const char ch=*ptr;
+                if(ch<32||ch>126)
+                    return false;
+                switch(ch) {
+                    case '/': return false;
+                    };
+                };
+        return true;
+        }
 class SensorGlucoseData {
 bool haserror=false;
 //inline static  const string basedir{FILEDIR};

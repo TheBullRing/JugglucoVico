@@ -1,4 +1,4 @@
-/*      This file is part of Juggluco, an Android app to receive and display         */
+﻿/*      This file is part of Juggluco, an Android app to receive and display         */
 /*      glucose values from Freestyle Libre 2 and 3 sensors.                         */
 /*                                                                                   */
 /*      Copyright (C) 2021 Jaap Korthals Altes <jaapkorthalsaltes@gmail.com>         */
@@ -182,8 +182,8 @@ void compare(const uint16_t *ar1,const uint16_t *ar2) {
 //        return (id+minutes)%idnr;
         }
 uint16_t    *mkpercentile(const float frac) const { 
-        uint16_t*ar    =new uint16_t[idnr];
-        for(int i=0;i<idnr;i++)
+        uint16_t *ar = new uint16_t[maxids]();
+        for(int i=0; i<idnr; ++i)
             ar[i]=percentile(i,frac);
         if(doSmooth) {
             uint16_t *res=bino.smoothar(ar,idnr);
@@ -388,8 +388,9 @@ void showround(NVGcontext* vg,JCurve &jcurve,roundtype dat,const int startid,con
             }
         }
 int effectmin(int min) const {
-    return (idnr*min)/(60*24);
+    return (maxids*min)/(60*24);
     }
+
     /*
 int gettimemin(time_t tim) const {
     return effectmin(getminutes(tim));
@@ -453,8 +454,8 @@ void showpercentiles(NVGcontext* vg,JCurve &jcurve) {
         const int timeback=starter-startidtime;
         const float placeback=jcurve.dwidth*timeback/jcurve.duration;
 
-        const double staridf=(idnr*starter)/(60.0*24.0*60.0);
-
+//        const double staridf=(idnr*starter)/(60.0*24.0*60.0);
+        const double staridf = (maxids*starter)/(60.0*24.0*60.0);
         int showids=globalperc.effectmin((jcurve.duration+timeback)/60+minperstep-1);
         const float move=(minperstep*60.0f*jcurve.dwidth/jcurve.duration);
 //        getidstep(jcurve.dwidth,showids);
@@ -1569,12 +1570,12 @@ const whole=new Intl.NumberFormat(text.locale,{maximumFractionDigits:0});
 const glucose=value=>data.glucoseUnit==='mmol/L'?one.format(value):whole.format(value);
 const percent=value=>`${one.format(value)}%`;
 const date=value=>new Date(value*1000).toLocaleString(text.locale);
-document.title=`Juggluco · ${text.title}`;
+document.title=`Juggluco ┬╖ ${text.title}`;
 document.getElementById('page-title').textContent=text.title;
-document.getElementById('period').textContent=`${date(data.startTime)} – ${date(data.endTime)} · ${text.duration}`;
-document.getElementById('source').textContent=`${text.source}${data.calibrated?' ✓':''}`;
+document.getElementById('period').textContent=`${date(data.startTime)} ΓÇô ${date(data.endTime)} ┬╖ ${text.duration}`;
+document.getElementById('source').textContent=`${text.source}${data.calibrated?' Γ£ô':''}`;
 const colors={veryHigh:'#f2994a',high:'#f2c94c',standard:'#3cb371',low:'#eb5757',veryLow:'#7b3f00'};
-const rangeText=range=>range.minimum===null?`≤ ${glucose(range.maximum)}`:range.maximum===null?`≥ ${glucose(range.minimum)}`:`${glucose(range.minimum)}–${glucose(range.maximum)}`;
+const rangeText=range=>range.minimum===null?`Γëñ ${glucose(range.maximum)}`:range.maximum===null?`ΓëÑ ${glucose(range.minimum)}`:`${glucose(range.minimum)}ΓÇô${glucose(range.maximum)}`;
 const stacked=document.getElementById('stacked');
 const legend=document.getElementById('legend');
 for(const range of data.ranges){
@@ -1599,7 +1600,7 @@ const values=[
 ];
 const metrics=document.getElementById('metrics');
 for(const value of values){const box=document.createElement('div');box.className='metric';const result=document.createElement('dd');result.textContent=value;box.append(result);metrics.append(box)}
-document.getElementById('target-range').textContent=`↔ ${glucose(data.targetRange.minimum)}–${glucose(data.targetRange.maximum)} ${text.glucoseUnit} · # ${whole.format(data.targetRange.measurementCount)}`;
+document.getElementById('target-range').textContent=`Γåö ${glucose(data.targetRange.minimum)}ΓÇô${glucose(data.targetRange.maximum)} ${text.glucoseUnit} ┬╖ # ${whole.format(data.targetRange.measurementCount)}`;
 document.getElementById('target-percent').textContent=percent(data.targetRange.percent);
 const jsonUrl=new URL(location.href);if(!jsonUrl.pathname.endsWith('.json'))jsonUrl.pathname+='.json';document.getElementById('json-link').href=jsonUrl;
 </script></body></html>)HTML"))

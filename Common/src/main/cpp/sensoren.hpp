@@ -1,4 +1,4 @@
-/*      This file is part of Juggluco, an Android app to receive and display         */
+﻿/*      This file is part of Juggluco, an Android app to receive and display         */
 /*      glucose values from Freestyle Libre 2 and 3 sensors.                         */
 /*                                                                                   */
 /*      Copyright (C) 2021 Jaap Korthals Altes <jaapkorthalsaltes@gmail.com>         */
@@ -44,6 +44,7 @@ inline constexpr const uint16_t LISTEND=0xFFFF;
 #ifdef SIBIONICS
 static constexpr const std::string_view sibionicsRecognition="0697283164";
 #endif
+
 struct sensor {
    uint32_t starttime;
    uint32_t endtime;
@@ -78,6 +79,15 @@ uint32_t largemaxtime() const {
    return maxtime()+60*60*24;
    }
 bool isPresent() const {
+    return true;
+    }
+
+bool valid() const {
+    if(!::valid16name(name)) {
+        return false;
+        }
+    if(!halfdays)
+        return false;
     return true;
     }
    } __attribute__ ((packed)) __attribute__ ((aligned (4))) ; /*always 32 bytes */

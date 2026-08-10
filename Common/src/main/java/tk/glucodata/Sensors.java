@@ -1,4 +1,4 @@
-/*      This file is part of Juggluco, an Android app to receive and display         */
+﻿/*      This file is part of Juggluco, an Android app to receive and display         */
 /*      glucose values from Freestyle Libre 2, Libre 3, Dexcom G7/ONE+,              */
 /*      Sibionics GS1Sb and Accu-Chek SmartGuide sensors.                            */
 /*                                                                                   */
@@ -103,7 +103,7 @@ void setSensorptr(long sensorptr) {
         }
     hide.setChecked(Natives.getHidefromSensorptr(sensorptr));
     minvalue=Natives.getMinimalWarmup(sensorptr);
-    if(minvalue==0) {
+    if(true) {
         warmupview.setVisibility(VISIBLE);
         minutes.setVisibility(VISIBLE);
         int currentwarmup= Natives.getManualWarmupMinutes(sensorptr);

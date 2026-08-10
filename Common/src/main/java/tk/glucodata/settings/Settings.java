@@ -38,6 +38,7 @@ import static tk.glucodata.Applic.isWearable;
 import static tk.glucodata.Applic.usedlocale;
 import static tk.glucodata.Backup.getnumedit;
 import static tk.glucodata.Layout.getMargins;
+import static tk.glucodata.MainActivity.canRotate;
 import static tk.glucodata.Log.doLog;
 import static tk.glucodata.Natives.getInvertColors;
 import static tk.glucodata.Natives.getRTL;
@@ -1131,8 +1132,19 @@ Scans.setOnCheckedChangeListener( (buttonView,  isChecked) -> { Natives.setshows
         });
         var dexfuture=getcheckbox(context,R.string.dexfuture,Natives.getdexcomPredict());
          dexfuture.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setdexcomPredict(isChecked) );
+         CheckDirectionBox reverseorientation;
+         if(canRotate) {
+            reverseorientation=getcheckbox(context,R.string.invertscreen,(Natives.getScreenOrientation()&SCREEN_ORIENTATION_REVERSE_LANDSCAPE)!=0);
+            reverseorientation.setOnCheckedChangeListener( (buttonView,  isChecked) ->  {
+                   int ori= (isChecked?SCREEN_ORIENTATION_REVERSE_LANDSCAPE:SCREEN_ORIENTATION_LANDSCAPE);
+                   Natives.setScreenOrientation(ori);
+                   });
+             }
+         else {
+           reverseorientation=null;
+           }
 
-    CheckDirectionBox levelleft= new CheckDirectionBox(context);
+   CheckDirectionBox levelleft= new CheckDirectionBox(context);
     levelleft.setText(R.string.glucoseaxisleft);
     levelleft.setChecked(Natives.getlevelleft());
 
@@ -1146,8 +1158,8 @@ Scans.setOnCheckedChangeListener( (buttonView,  isChecked) -> { Natives.setshows
 
         Layout.getMargins(close).setMarginEnd(amarg);
         var themebut=getbutton(context,R.string.theme);
-        Object[][] displayRowsLandscape = new Object[][]{graphrow,new View[]{scalelabel,fixatex, fixatey},targetrow,new View[]{threslabel,threshold,dexfuture},new View[] {levelleft},new View[] {hour12,langspin,iob,fixed},new View[]{colbut,themebut,help,close}};
-        Object[][] displayRowsPortrait = new Object[][]{graphrow,new View[]{scalelabel},new View[]{fixatex, fixatey},targetrow,new View[]{threslabel,threshold},new View[]{dexfuture},new View[] {levelleft},new View[] {hour12,langspin},new View[]{iob,fixed},new View[]{colbut,themebut},new View[]{help,close}};
+        Object[][] displayRowsLandscape = new Object[][]{graphrow,new View[]{scalelabel,fixatex, fixatey},targetrow,new View[]{threslabel,threshold,dexfuture},new View[] {levelleft,reverseorientation},new View[] {hour12,langspin,iob,fixed},new View[]{colbut,themebut,help,close}};
+        Object[][] displayRowsPortrait = new Object[][]{graphrow,new View[]{scalelabel},new View[]{fixatex, fixatey},targetrow,new View[]{threslabel,threshold},new View[]{dexfuture},new View[] {levelleft,reverseorientation},new View[] {hour12,langspin},new View[]{iob,fixed},new View[]{colbut,themebut},new View[]{help,close}};
         lay = new Layout(context, (l, w, h) -> {
                   int[] ret={w,h};
                  return ret;

@@ -54,3 +54,4 @@ Refer to it for the full phase history, architecture overview, and session log.
 | Date | Summary |
 |------|---------|
 | 2026-07-22 | Initial selective migration from Juggluco-Portrait — Vico/Compose chart + portrait orientation only, all widget/alarm additions excluded. |
+| 2026-08-06 | Merged upstream 10.9.9 (`4d28ea31`). Key changes: `applyScreenOrientation()` with Android 16 large-screen support in `MainActivity`, `canRotate` flag + `ContentObserver` for auto-rotate, `reverseorientation` checkbox conditional on `canRotate` in `Settings`, `screenOrientation="unspecified"` in AndroidManifest, updated `NumberView` keyboard overlay, `FloatingConfig` portrait/landscape dynamic layout, `Dialogs` portrait overlay centering fix, `watchserver` new HTTP endpoints, `sslserver` improvements, `GlucoseCurve` Context imports, Ukrainian strings, version 10.9.9 / versionCodes 899 (mobile) 900 (wear). |

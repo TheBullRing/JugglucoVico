@@ -67,10 +67,10 @@
             android:label="@string/app_name"
             android:launchMode="singleTask"
             android:resizeableActivity="true"
-            android:screenOrientation="reverseLandscape"
-	    >
+            android:screenOrientation="unspecified"
+     >
 
-       <property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true" />
+       <!-- PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY removed in 10.9.9; orientation is now managed dynamically by applyScreenOrientation() -->
 
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />

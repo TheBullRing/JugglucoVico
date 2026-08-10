@@ -23,6 +23,8 @@
 package tk.glucodata;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
