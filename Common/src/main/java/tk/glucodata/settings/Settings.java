@@ -256,9 +256,9 @@ void finish() {
     settinglayout.setVisibility(GONE);
     
     try {
-        // Restore the orientation stored in native settings (may have been
-        // changed by the orientation spinner while Settings was open).
-        activity.setRequestedOrientation(Natives.getScreenOrientation());
+        // Restore orientation through the Android-16-aware helper so that
+        // large-screen / foldable restrictions on API 36+ are respected.
+        activity.applyScreenOrientation(activity.getResources().getConfiguration());
         }
         catch(       Throwable  error) {
         String mess=error!=null?error.getMessage():null;
@@ -1483,7 +1483,10 @@ private    void mksettings(MainActivity context) {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 int val = orientationValues[position];
                 Natives.setScreenOrientation(val);
-                context.setRequestedOrientation(val);
+                // Route through the Android-16-aware helper instead of calling
+                // setRequestedOrientation() directly — on API 36+ large screens
+                // the direct call is silently ignored by the system.
+                context.applyScreenOrientation(context.getResources().getConfiguration());
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
@@ -1506,21 +1509,37 @@ private    void mksettings(MainActivity context) {
 
         View[] rowglu=new View[]{floatconfig,calibration,glucosenotify};
 //        View[] rowglu=new View[]{floatconfig,glucosenotify};
+        // Portrait: group elements 2-per-row to keep the whole screen on one page.
+        // numdis has 3-4 items in release/debug; split into pairs.
+        // row9 has 4 items {help,intro,about,close}; split into pairs of 2.
+        View[] numdisA, numdisB;
+        if (numdis.length >= 4) {
+            numdisA = new View[]{numdis[0], numdis[1]};
+            numdisB = new View[]{numdis[2], numdis[3]};
+        } else {
+            numdisA = new View[]{numdis[0]};
+            numdisB = numdis.length > 1 ? new View[]{numdis[1], numdis.length > 2 ? numdis[2] : null} : null;
+        }
+        View[] row9A = row9.length >= 4
+                ? new View[]{row9[0], row9[1]}
+                : row9;
+        View[] row9B = row9.length >= 4
+                ? new View[]{row9[2], row9[3]}
+                : null;
         final Object[][] portraitViews=new Object[][]{
-                new View[]{row0[0]},          // unitlabel
-                isWearable ? null : new View[]{row0[1], row0[2]}, // mmolL, mgdl
+                new View[]{row0[0]},
+                isWearable ? null : new View[]{row0[1], row0[2]},
                 hasnfc?new View[]{nfcsound, globalscan}:null,
                 hasnfc&&camera!=null?new View[]{camera}:null,
-                new View[]{floatconfig},
+                new View[]{floatconfig, glucosenotify},
                 new View[]{orientLabel, orientSpin},
-                new View[]{vicoToggle},
-                new View[]{calibration},
-                new View[]{glucosenotify},
-                new View[]{exchanges},
-                new View[]{numalarm},
+                new View[]{vicoToggle, calibration},
+                new View[]{exchanges, numalarm},
                 new View[]{alarmbut},
-                numdis,
-                row9
+                numdisA,
+                numdisB,
+                row9A,
+                row9B
         };
         final Object[][] landscapeViews=new Object[][]{row0, hasnfc?new View[]{nfcsound, globalscan,camera}:null,new View[]{orientLabel,orientSpin},new View[]{vicoToggle},rowglu,new View[]{exchanges,numalarm,alarmbut},numdis, row9};
         views=Layout.portraitRows(portraitViews,landscapeViews);
