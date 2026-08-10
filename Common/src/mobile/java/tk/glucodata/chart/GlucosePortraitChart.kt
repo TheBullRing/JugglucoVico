@@ -75,8 +75,15 @@ fun GlucosePortraitChart(
         modifier = modifier
             .background(background)
             .semantics { contentDescription = "Glucose portrait chart" }
-            .pointerInput(Unit) {
+            .pointerInput(entries) {
                 awaitEachGesture {
+                    // Límites de scroll: nunca sobrepasar el último dato hacia el futuro
+                    // ni retroceder más allá del primer dato hacia el pasado.
+                    val maxEnd = if (entries.isEmpty()) Long.MAX_VALUE
+                                 else entries.maxOf { it.timestampMs } + 5L * 60_000L
+                    val minTs  = if (entries.isEmpty()) Long.MIN_VALUE
+                                 else entries.minOf { it.timestampMs }
+
                     val down = awaitFirstDown(requireUnconsumed = false)
                     down.consume()
                     var prevY    = down.position.y
@@ -90,7 +97,10 @@ fun GlucosePortraitChart(
                             val dy = p.position.y - prevY
                             prevY    = p.position.y
                             prevDist = -1f
-                            windowEndState.longValue -= (dy * windowMsState.floatValue / size.height.toFloat()).toLong()
+                            val curMs = windowMsState.floatValue
+                            val minEnd = minTs + curMs.toLong()
+                            val proposed = windowEndState.longValue - (dy * curMs / size.height.toFloat()).toLong()
+                            windowEndState.longValue = proposed.coerceIn(minEnd, maxEnd)
                             p.consume()
                         } else {
                             val p0   = changes[0]; val p1 = changes[1]
@@ -102,7 +112,8 @@ fun GlucosePortraitChart(
                                 val newMs    = (curMs * zoom).coerceIn(30L * 60_000L.toFloat(), 24L * 3_600_000L.toFloat())
                                 val centerMs = curEnd - curMs / 2f
                                 windowMsState.floatValue = newMs
-                                windowEndState.longValue = (centerMs + newMs / 2f).toLong()
+                                val minEnd = minTs + newMs.toLong()
+                                windowEndState.longValue = (centerMs + newMs / 2f).toLong().coerceIn(minEnd, maxEnd)
                             }
                             prevDist = dist
                             prevY    = (p0.position.y + p1.position.y) / 2f
