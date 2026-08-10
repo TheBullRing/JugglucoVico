@@ -254,8 +254,8 @@ private void startdisplay() {
         android.view.View composeView = GlucoseChartViewBridgeKt.createGlucoseChartView(
                 this,
                 tabIndex -> {
-                    // Popup menu option tapped: open menu at the selected tab (0=Acciones/1=Datos/2=Ver).
-                    Applic.RunOnUiThread(() -> Menus.show(MainActivity.this, tabIndex));
+                    // Popup menu option tapped: open VicoMenus at the selected tab (0=Acciones/1=Datos/2=Ver).
+                    Applic.RunOnUiThread(() -> VicoMenus.show(MainActivity.this, tabIndex));
                     return kotlin.Unit.INSTANCE;
                 },
                 entry -> {
@@ -287,18 +287,14 @@ private void startdisplay() {
         setContentView(composeView);
     }
     getlibrary.getlibrary(this);//after setfilesdir for settings — must come BEFORE setRequestedOrientation
-    // Apply the stored orientation only when it differs from the current one.
-    try {
-        // Old UI (OpenGL/NanoVG) was always landscape — the C++ renderer has no
-        // portrait layout.  Force it regardless of the user's rotation preference.
-        // New UI (Vico) respects the stored preference (default: free rotation).
-        int desired = Applic.useVicoChart()
-                ? Natives.getScreenOrientation()
-                : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
-        if (getRequestedOrientation() != desired) {
-            setRequestedOrientation(desired);
-        }
-    } catch (Throwable ignored) {}
+    // Apply orientation using the Android-16-aware helper.
+    // Old UI (OpenGL/NanoVG) has no portrait layout — always force landscape,
+    // bypassing applyScreenOrientation() which only applies in the Vico path.
+    if (!Applic.useVicoChart()) {
+        requestOrientationOnce(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    } else {
+        applyScreenOrientation(getResources().getConfiguration());
+    }
    if(!isWearable) {
       if(Build.VERSION.SDK_INT < 30) {
          onceshowintro();
@@ -532,13 +528,22 @@ private final android.database.ContentObserver autoRotateObserver =isWearable?nu
 private static final boolean testPortrait=false;
 public void applyScreenOrientation(Configuration config) {
 if(!isWearable) {
+    // Old UI (OpenGL/NanoVG) has no portrait layout — always lock to landscape
+    // regardless of user preference. This covers onStart, onConfigurationChanged
+    // and the autoRotateObserver, all of which call this method unconditionally.
+    if (!Applic.useVicoChart()) {
+        requestOrientationOnce(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        return;
+    }
      boolean largeScreen=testPortrait||config.smallestScreenWidthDp >=600;
      canRotate=Build.VERSION.SDK_INT < 36||!largeScreen;
      boolean isElongated=testPortrait||getIsElongated(config);
     try {
     int wanted;
     if(!largeScreen) {
-         wanted = Natives.getScreenOrientation();
+         // Sentinel 127 (uint8_t:7 default) means "never been set" — treat as UNSPECIFIED.
+         int stored = Natives.getScreenOrientation();
+         wanted = (stored == 127) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : stored;
          }
     else {
         if(!isElongated) {
