@@ -2024,6 +2024,7 @@ public static void addMyContentView(Activity context,View view, ViewGroup.Layout
     if(Applic.useVicoChart()
             && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
             && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
+        ensureOpaqueBackground(view);
         applyInsetsToOverlay(view);
     }
     }
@@ -2036,9 +2037,22 @@ public void addMyContentView(View view, ViewGroup.LayoutParams params) {
     if(Applic.useVicoChart()
             && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
             && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
+        ensureOpaqueBackground(view);
         applyInsetsToOverlay(view);
     }
     }
+
+/**
+ * In the Vico/EdgeToEdge path, MATCH_PARENT overlays sit on top of the
+ * ComposeView. If the overlay root has no background (e.g. a ScrollView),
+ * the Compose content shows through. Force an opaque background so the
+ * overlay visually replaces the chart.
+ */
+private static void ensureOpaqueBackground(View view) {
+    if (view.getBackground() == null) {
+        view.setBackgroundColor(Applic.backgroundcolor);
+    }
+}
 
 /**
  * Attaches a WindowInsets listener to a full-screen overlay view so it correctly
