@@ -269,8 +269,8 @@ private fun LandscapeLayout(
                 windowMsState  = windowMsState,
                 modifier       = Modifier.weight(1f).fillMaxHeight(),
             )
-            // Panel lateral landscape: 180dp
-            Column(modifier = Modifier.width(180.dp).fillMaxHeight()) {
+            // Panel lateral landscape: 210dp — suficiente para chips 2×2 sin texto partido
+            Column(modifier = Modifier.width(210.dp).fillMaxHeight()) {
                 StatsPanelWithDirection(
                     entries     = entries,
                     settings    = settings,
@@ -613,81 +613,71 @@ private fun StatsPanel(
             .semantics { contentDescription = "Glucosa: $displayValue $unitSuffix $trendArrow. TIR $tirPct%, Alto $highPct%, Bajo $lowPct%" },
     ) {
         if (isLandscape) {
-            // ── Landscape fila 1: valor actual + flecha ──────────────────────
+            // ── Landscape: valor grande + unidad + flecha ────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text       = displayValue,
-                    style      = MaterialTheme.typography.displaySmall,
+                    style      = MaterialTheme.typography.headlineMedium,
                     color      = glucoseColor,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.width(4.dp))
+                Column {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text  = unitSuffix,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
                 Text(
-                    text  = unitSuffix,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text      = trendArrow,
-                    style     = MaterialTheme.typography.titleLarge,
-                    color     = trendColor,
+                    text       = trendArrow,
+                    style      = MaterialTheme.typography.titleMedium,
+                    color      = trendColor,
                     fontWeight = FontWeight.Bold,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-        }
 
-        if (isLandscape) {
-            // ── Landscape: valor actual + tendencia ──────────────────────────────
+            // Age + delta en la misma fila compacta
             Row(
-                modifier          = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                modifier          = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (ageStr != null)
                     Text(ageStr, style = MaterialTheme.typography.labelSmall, color = ageColor)
                 Spacer(Modifier.weight(1f))
                 if (deltaDisplay != null)
-                    Text(deltaDisplay, style = MaterialTheme.typography.labelMedium,
+                    Text(deltaDisplay, style = MaterialTheme.typography.labelSmall,
                         color = deltaColor, fontWeight = FontWeight.SemiBold)
             }
-            Spacer(Modifier.height(6.dp))
 
-            // ── Fila 1: TIR / Alto / Bajo como TirChips ──────────────────────────
-            Row(
-                modifier              = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                TirChip(value = "$tirPct%",  label = "TIR",            color = Color(0xFF2ECC71), modifier = Modifier.weight(1f))
-                TirChip(value = "$highPct%", label = "Alto $highLabel", color = Color(0xFFF39C12), modifier = Modifier.weight(1f))
-                TirChip(value = "$lowPct%",  label = "Bajo $lowLabel",  color = Color(0xFFE74C3C), modifier = Modifier.weight(1f))
+            // ── Grid 2×2 de chips — caben perfectamente en 210dp ─────────────────
+            // Fila 1: TIR + Alto
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TirChipCompact(value = "$tirPct%",  label = "TIR",  color = Color(0xFF2ECC71), modifier = Modifier.weight(1f))
+                TirChipCompact(value = "$highPct%", label = "Alto", color = Color(0xFFF39C12), modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(4.dp))
-
-            // ── Fila 2: GMI / CV% (métricas primarias) ───────────────────────────
-            Row(
-                modifier              = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
+            // Fila 2: Bajo + GMI
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TirChipCompact(value = "$lowPct%", label = "Bajo", color = Color(0xFFE74C3C), modifier = Modifier.weight(1f))
                 if (gmiStr != null)
-                    TirChip(value = gmiStr, label = "GMI", color = gmiColor, modifier = Modifier.weight(1f))
+                    TirChipCompact(value = gmiStr, label = "GMI", color = gmiColor, modifier = Modifier.weight(1f))
                 else
-                    GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
-
+                    GmiNaChipCompact(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(4.dp))
+            // Fila 3: CV% + Pred 20min
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (cvStr != null)
-                    TirChip(value = cvStr, label = "CV%", color = cvColor, modifier = Modifier.weight(1f))
+                    TirChipCompact(value = cvStr, label = "CV%", color = cvColor, modifier = Modifier.weight(1f))
                 else
                     Spacer(Modifier.weight(1f))
-            }
-            // ── Fila 3: Predicción 20min (métrica secundaria de apoyo) ────────────
-            if (predValueDisplay != null) {
-                Spacer(Modifier.height(4.dp))
-                SecondaryChip(
-                    value    = predValueDisplay,
-                    label    = "Predicción ~20min",
-                    color    = predColor2,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (predValueDisplay != null)
+                    TirChipCompact(value = predValueDisplay, label = "~20min", color = predColor2, modifier = Modifier.weight(1f))
+                else
+                    Spacer(Modifier.weight(1f))
             }
 
         } else {
@@ -887,6 +877,99 @@ private fun StatColumn(
         )
     }
 }
+
+/**
+ * Versión compacta del chip para el panel lateral landscape (210dp).
+ * Usa titleSmall en lugar de titleLarge para que quepa en un grid 2×2.
+ */
+@Composable
+private fun TirChipCompact(
+    value:    String,
+    label:    String,
+    color:    Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape    = RoundedCornerShape(10.dp),
+        color    = MaterialTheme.colorScheme.surfaceContainer,
+        border   = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = color.copy(alpha = 0.30f),
+        ),
+    ) {
+        Column(
+            modifier            = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text       = value,
+                style      = MaterialTheme.typography.titleSmall,
+                color      = color,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text  = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Versión compacta del chip GMI deshabilitado para el panel lateral landscape.
+ */
+@Composable
+private fun GmiNaChipCompact(daysRemaining: Int, modifier: Modifier = Modifier) {
+    var showDialog by remember { mutableStateOf(false) }
+    val grayColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val sublabel = when {
+        daysRemaining > 0 -> "~$daysRemaining días"
+        else              -> "14 días"
+    }
+    Surface(
+        modifier = modifier.clickable { showDialog = true },
+        shape    = RoundedCornerShape(10.dp),
+        color    = MaterialTheme.colorScheme.surfaceContainer,
+        border   = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Column(
+            modifier            = Modifier
+                .alpha(0.55f)
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text       = "GMI",
+                style      = MaterialTheme.typography.titleSmall,
+                color      = grayColor,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text  = sublabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = grayColor,
+            )
+        }
+    }
+    if (showDialog) {
+        val msg = if (daysRemaining > 0)
+            "Se necesitan al menos 14 días de datos continuos del sensor para calcular una estimación fiable de la HbA1c (GMI).\n\nFaltan aproximadamente $daysRemaining día${if (daysRemaining != 1) "s" else ""}."
+        else
+            "Se necesitan al menos 14 días de datos continuos del sensor para calcular una estimación fiable de la HbA1c (GMI)."
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title            = { Text("GMI — Requiere 14 días de datos") },
+            text             = { Text(msg) },
+            confirmButton    = { TextButton(onClick = { showDialog = false }) { Text("Entendido") } },
+        )
+    }
+}
+
 
 /**
  * Chip de estadística primaria (TIR/Alto/Bajo/GMI/CV%).
