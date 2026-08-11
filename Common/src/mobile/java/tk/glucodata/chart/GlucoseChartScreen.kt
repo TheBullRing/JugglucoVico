@@ -766,23 +766,21 @@ private fun StatsPanel(
                 TirChip(value = "$lowPct%", label = "Bajo $lowLabel", color = Color(0xFFE74C3C), modifier = Modifier.weight(1f))
             }
 
-            // Fila 3: GMI (solo ≥14 días) + CV% (métricas primarias)
-            if (cvStr != null || gmiStr != null) {
-                Row(
-                    modifier              = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // GMI: semáforo de color si disponible; chip "datos insuficientes" si inminente
-                    if (gmiStr != null)
-                        TirChip(value = gmiStr, label = "GMI (HbA1c est.)", color = gmiColor, modifier = Modifier.weight(1f))
-                    else
-                        GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
+            // Fila 3: GMI + CV% — siempre visible para comunicar que las métricas existen
+            Row(
+                modifier              = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // GMI: valor si ≥14 días de historial; chip deshabilitado con cuenta regresiva si no
+                if (gmiStr != null)
+                    TirChip(value = gmiStr, label = "GMI (HbA1c est.)", color = gmiColor, modifier = Modifier.weight(1f))
+                else
+                    GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
 
-                    if (cvStr != null)
-                        TirChip(value = cvStr, label = "CV% variabilidad", color = cvColor, modifier = Modifier.weight(1f))
-                    else
-                        Spacer(Modifier.weight(1f))
-                }
+                if (cvStr != null)
+                    TirChip(value = cvStr, label = "CV% variabilidad", color = cvColor, modifier = Modifier.weight(1f))
+                else
+                    Spacer(Modifier.weight(1f))
             }
             // Fila 4: Predicción 20min — métrica secundaria, visualmente más discreta
             if (predValueDisplay != null) {
