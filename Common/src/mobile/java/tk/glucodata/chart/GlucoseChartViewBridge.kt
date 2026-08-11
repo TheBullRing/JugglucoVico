@@ -17,12 +17,9 @@ import androidx.lifecycle.ViewModelProvider
  * @param menuActions All menu actions/states for the native Compose menu.
  * @param onLongPress Called when the user long-presses a data point.
  */
-@JvmOverloads
 fun createGlucoseChartView(
     activity:    ComponentActivity,
-    menuActions: VicoMenuActions? = null,
-    // Legacy parameter, ignored when menuActions != null
-    onMenuTab:   ((Int) -> Unit) = {},
+    menuActions: VicoMenuActions,
     onLongPress: ((GlucoseEntry) -> Unit) = {},
 ): ComposeView {
     val viewModel = ViewModelProvider(
@@ -35,7 +32,6 @@ fun createGlucoseChartView(
             GlucoseChartScreen(
                 viewModel   = viewModel,
                 menuActions = menuActions,
-                onMenuTab   = onMenuTab,
                 onLongPress = onLongPress,
             )
         }

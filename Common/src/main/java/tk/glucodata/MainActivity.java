@@ -294,7 +294,6 @@ private void startdisplay() {
         android.view.View composeView = GlucoseChartViewBridgeKt.createGlucoseChartView(
                 this,
                 menuActions,
-                tabIndex -> kotlin.Unit.INSTANCE, // unused — menu handled by VicoMenuSheet
                 entry -> {
                     // Long-press: open number-entry at the tapped data point.
                     Applic.RunOnUiThread(() -> curveRef.numberview.addnumberview(MainActivity.this, entry.getTimestampMs()));

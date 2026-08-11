@@ -50,8 +50,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -65,7 +63,6 @@ import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.MutableLongState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,21 +86,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Root composable. Call from the ComposeView created in MainActivity.startdisplay()
- * when [tk.glucodata.Applic.USE_VICO_CHART] is true.
+ * when [tk.glucodata.Applic.useVicoChart()] is true.
  *
  * @param viewModel   The chart ViewModel (created via [GlucoseChartViewModel.Factory]).
- * @param onMenuTab   Called when the user selects a menu tab from the popup.
- *                    Receives the tab index: 0=Acciones, 1=Datos, 2=Ver.
+ * @param menuActions All menu actions and toggle states for the Compose menu sheet.
  * @param onLongPress Invoked when the user long-presses a data point.
- *                    Receives the closest [GlucoseEntry] so the existing number-entry
- *                    dialog can be opened. Replaces Natives.longpress(x, y).
  */
 @Composable
 fun GlucoseChartScreen(
     viewModel:   GlucoseChartViewModel,
-    menuActions: VicoMenuActions? = null,
-    // onMenuTab kept for backwards-compat (ignored when menuActions != null)
-    onMenuTab:   (Int) -> Unit = {},
+    menuActions: VicoMenuActions,
     onLongPress: (GlucoseEntry) -> Unit = {},
 ) {
     val entries  by viewModel.glucoseEntries.collectAsStateWithLifecycle()
@@ -122,9 +114,7 @@ fun GlucoseChartScreen(
     val windowEndMs by windowEndState
     val windowMs    by windowMsState
 
-    // Estado del menú Compose (solo cuando menuActions está disponible)
-    var menuVisible    by remember { mutableStateOf(false) }
-    var menuInitialTab by remember { mutableIntStateOf(0) }
+    var menuVisible by remember { mutableStateOf(false) }
 
     GlucoseTheme(invertColors = settings.invertColors) {
         Surface(
@@ -157,28 +147,19 @@ fun GlucoseChartScreen(
                     }
                 }
 
-                // Botón ⌄ — abre el menú Compose nativo si menuActions está
-                // disponible, o el viejo popup Java en caso contrario.
-                MenuPopupButton(
-                    onMenuTab = { tab ->
-                        if (menuActions != null) {
-                            menuInitialTab = tab
-                            menuVisible    = true
-                        } else {
-                            onMenuTab(tab)
-                        }
-                    },
+                // Botón ⌄ — abre el VicoMenuSheet directamente (tab 0 = Acciones)
+                MenuButton(
+                    onClick  = { menuVisible = true },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp),
                 )
 
-                // Menú Compose nativo (superpuesto sobre el chart)
-                if (menuVisible && menuActions != null) {
+                // Menú Compose superpuesto sobre el chart
+                if (menuVisible) {
                     VicoMenuSheet(
-                        initialTab = menuInitialTab,
-                        actions    = menuActions,
-                        onDismiss  = { menuVisible = false },
+                        actions   = menuActions,
+                        onDismiss = { menuVisible = false },
                     )
                 }
             }
@@ -191,53 +172,26 @@ fun GlucoseChartScreen(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Botón circular ⌄ que al pulsarse muestra un DropdownMenu flotante con las
- * 3 opciones de menú (Acciones / Datos / Ver). El gráfico queda visible de fondo.
- * Al seleccionar una opción se llama [onMenuTab] con el índice (0/1/2) y se cierra
- * el popup; la Activity entonces abre el menú completo en la pestaña correcta.
+ * Botón circular ⌄ que al pulsarse abre el menú principal (VicoMenuSheet).
  */
 @Composable
-private fun MenuPopupButton(onMenuTab: (Int) -> Unit, modifier: Modifier = Modifier) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Box(modifier = modifier) {
-        // ── Botón circular ─────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
-                .clickable { expanded = true }
-                .semantics { contentDescription = "Open menu" },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text       = "⌄",
-                style      = MaterialTheme.typography.titleMedium,
-                color      = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-
-        // ── Popup flotante ─────────────────────────────────────────────────
-        DropdownMenu(
-            expanded         = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            DropdownMenuItem(
-                text    = { Text("Acciones") },
-                onClick = { expanded = false; onMenuTab(0) },
-            )
-            DropdownMenuItem(
-                text    = { Text("Datos") },
-                onClick = { expanded = false; onMenuTab(1) },
-            )
-            DropdownMenuItem(
-                text    = { Text("Ver") },
-                onClick = { expanded = false; onMenuTab(2) },
-            )
-        }
+private fun MenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "Abrir menú" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text       = "⌄",
+            style      = MaterialTheme.typography.titleMedium,
+            color      = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
