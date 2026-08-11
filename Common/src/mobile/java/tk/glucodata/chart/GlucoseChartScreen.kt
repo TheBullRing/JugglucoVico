@@ -969,18 +969,24 @@ private fun SecondaryChip(
 }
 
 /**
- * Chip "datos insuficientes" para GMI cuando no hay ≥14 días de historial.
- * Se muestra solo al pulsar — el chip está oculto si faltan más de 3 días;
- * si faltan ≤3 días (inminente) se muestra para avisar al usuario.
- * Cuando hay datos suficientes se muestra directamente el valor de GMI.
+ * Chip deshabilitado para GMI cuando no hay ≥14 días de historial.
+ *
+ * Siempre visible (no se oculta) — la presencia del chip comunica que la métrica existe
+ * y estará disponible automáticamente al acumular suficiente historial.
+ * La sublínea indica cuántos días faltan si se conoce la cifra exacta, o bien
+ * un mensaje genérico de descubrimiento ("Disponible tras 14 días").
+ * Al pulsar aparece un diálogo educativo con el motivo clínico de los 14 días.
  */
 @Composable
 private fun GmiNaChip(daysRemaining: Int, modifier: Modifier = Modifier) {
-    // Ocultar completamente cuando faltan más de 3 días — reduce ruido visual
-    if (daysRemaining > 3) return
-
     var showDialog by remember { mutableStateOf(false) }
     val grayColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    // Sublínea adaptada: días exactos cuando se conocen, genérica cuando no
+    val sublabel = when {
+        daysRemaining > 0 -> "Faltan $daysRemaining día${if (daysRemaining != 1) "s" else ""}"
+        else              -> "Disponible tras 14 días"
+    }
 
     Surface(
         modifier = modifier.clickable { showDialog = true },
@@ -993,7 +999,7 @@ private fun GmiNaChip(daysRemaining: Int, modifier: Modifier = Modifier) {
     ) {
         Column(
             modifier            = Modifier
-                .alpha(0.60f)
+                .alpha(0.55f)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -1005,9 +1011,9 @@ private fun GmiNaChip(daysRemaining: Int, modifier: Modifier = Modifier) {
                 textAlign  = TextAlign.Center,
             )
             Text(
-                text      = "Datos insuficientes",
-                style     = MaterialTheme.typography.labelSmall,
-                color     = grayColor,
+                text       = sublabel,
+                style      = MaterialTheme.typography.labelSmall,
+                color      = grayColor,
                 fontWeight = FontWeight.Medium,
                 textAlign  = TextAlign.Center,
             )
@@ -1016,12 +1022,12 @@ private fun GmiNaChip(daysRemaining: Int, modifier: Modifier = Modifier) {
 
     if (showDialog) {
         val msg = if (daysRemaining > 0)
-            "Se necesitan al menos 14 días de datos continuos del sensor para calcular una estimación fiable de la HbA1c (GMI).\n\nTe faltan aproximadamente $daysRemaining día${if (daysRemaining != 1) "s" else ""}."
+            "Se necesitan al menos 14 días de datos continuos del sensor para calcular una estimación fiable de la HbA1c (GMI).\n\nFaltan aproximadamente $daysRemaining día${if (daysRemaining != 1) "s" else ""}."
         else
             "Se necesitan al menos 14 días de datos continuos del sensor para calcular una estimación fiable de la HbA1c (GMI)."
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title            = { Text("GMI — Datos insuficientes") },
+            title            = { Text("GMI — Requiere 14 días de datos") },
             text             = { Text(msg) },
             confirmButton    = {
                 TextButton(onClick = { showDialog = false }) { Text("Entendido") }
