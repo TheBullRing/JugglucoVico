@@ -311,40 +311,61 @@ private fun DrawScope.drawLandscapeChart(
             val newest    = recentForSlope.last()
             val dtMin     = (newest.timestampMs - oldest.timestampMs) / 60_000f
             val slope     = if (dtMin > 0f) (newest.valueMgdL - oldest.valueMgdL) / dtMin else 0f
-            val predMs    = 20L * 60_000L
-            val predValue = lcDisplayUnit((newest.valueMgdL + slope * 20f).coerceIn(20f, 400f), unit)
-            val ptX0      = timeToX(newest.timestampMs)
-            val ptY0      = glucoseToY(lcDisplayUnit(newest.valueMgdL, unit))
-            val ptX1      = timeToX(newest.timestampMs + predMs).coerceAtMost(canvasW)
-            val ptY1      = glucoseToY(predValue)
-            val predColor = lcGlucoseColor(predValue, targetLow, targetHigh, veryLow, veryHigh)
+            val predMs      = 20L * 60_000L
+            val predValue   = lcDisplayUnit((newest.valueMgdL + slope * 20f).coerceIn(20f, 400f), unit)
+            val ptX0        = timeToX(newest.timestampMs)
+            val ptY0        = glucoseToY(lcDisplayUnit(newest.valueMgdL, unit))
+            val ptX1Raw     = timeToX(newest.timestampMs + predMs).coerceAtMost(canvasW)
+            val ptY1Raw     = glucoseToY(predValue)   // puede ser negativo si predValue > yMax
+            val predColor   = lcGlucoseColor(predValue, targetLow, targetHigh, veryLow, veryHigh)
 
-            // Cono de incertidumbre: se ensancha de 0 a ±18dp en 20 min
-            val halfCone = 18.dp.toPx()
-            val conePath = Path().apply {
-                moveTo(ptX0, ptY0)
-                lineTo(ptX1, ptY1 - halfCone)
-                lineTo(ptX1, ptY1 + halfCone)
-                close()
-            }
-            drawPath(conePath, predColor.copy(alpha = 0.07f))
-
-            // Línea central punteada
-            val dashPx = 7.dp.toPx(); val gapPx = 5.dp.toPx()
-            var cx = ptX0
-            while (cx < ptX1) {
-                val ex = minOf(cx + dashPx, ptX1)
-                val t0 = (cx - ptX0) / (ptX1 - ptX0).coerceAtLeast(1f)
-                val t1 = (ex - ptX0) / (ptX1 - ptX0).coerceAtLeast(1f)
-                drawLine(predColor.copy(alpha = 0.6f),
-                    Offset(cx, ptY0 + (ptY1 - ptY0) * t0),
-                    Offset(ex, ptY0 + (ptY1 - ptY0) * t1), 2.dp.toPx())
-                cx += dashPx + gapPx
+            // Recortar al canvas: si ptY1Raw < 0 (valor por encima del eje visible),
+            // recalcular ptX1 en la intersección con el borde superior (Y=0).
+            val rangeY = (ptY1Raw - ptY0).let { if (it == 0f) 1f else it }
+            val rangeX = ptX1Raw - ptX0
+            val (ptX1, ptY1) = if (ptY1Raw >= 0f) {
+                Pair(ptX1Raw, ptY1Raw)
+            } else {
+                // t = fracción del trayecto hasta Y=0
+                val t = (0f - ptY0) / rangeY
+                Pair((ptX0 + rangeX * t).coerceIn(0f, canvasW), 0f)
             }
 
-            // Punto final de predicción
-            drawCircle(predColor.copy(alpha = 0.25f), 6.dp.toPx(), Offset(ptX1, ptY1))
-            drawCircle(predColor.copy(alpha = 0.55f), 3.dp.toPx(), Offset(ptX1, ptY1))
+            // Solo dibujar si hay recorrido horizontal visible
+            if (ptX1 > ptX0 + 2f) {
+                // Cono de incertidumbre: se ensancha de 0 a ±18dp en 20 min
+                val halfCone = 18.dp.toPx()
+                val conePath = Path().apply {
+                    moveTo(ptX0, ptY0)
+                    lineTo(ptX1, (ptY1 - halfCone).coerceAtLeast(0f))
+                    lineTo(ptX1, (ptY1 + halfCone).coerceAtMost(canvasH))
+                    close()
+                }
+                drawPath(conePath, predColor.copy(alpha = 0.07f))
+
+                // Línea central punteada — interpolada linealmente dentro del canvas
+                val dashPx = 7.dp.toPx(); val gapPx = 5.dp.toPx()
+                val totalX = (ptX1 - ptX0).coerceAtLeast(1f)
+                var cx = ptX0
+                while (cx < ptX1) {
+                    val ex = minOf(cx + dashPx, ptX1)
+                    val t0 = (cx - ptX0) / totalX
+                    val t1 = (ex - ptX0) / totalX
+                    drawLine(
+                        predColor.copy(alpha = 0.6f),
+                        Offset(cx, (ptY0 + rangeY * t0).coerceIn(0f, canvasH)),
+                        Offset(ex, (ptY0 + rangeY * t1).coerceIn(0f, canvasH)),
+                        2.dp.toPx(),
+                    )
+                    cx += dashPx + gapPx
+                }
+
+                // Punto final solo si está dentro del canvas vertical
+                if (ptY1Raw >= 0f) {
+                    drawCircle(predColor.copy(alpha = 0.25f), 6.dp.toPx(), Offset(ptX1, ptY1))
+                    drawCircle(predColor.copy(alpha = 0.55f), 3.dp.toPx(), Offset(ptX1, ptY1))
+                }
+            }
         }
     }
 
