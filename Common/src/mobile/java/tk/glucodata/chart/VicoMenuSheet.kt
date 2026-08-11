@@ -28,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,20 +122,23 @@ fun VicoMenuSheet(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.45f))
-            // Pulsar fuera del sheet cierra el menú
             .clickable(onClick = onDismiss),
     ) {
+        // Altura máxima = 72% de la pantalla; se encoge si el contenido es menor.
+        val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                // Absorbe clicks dentro del sheet para que no lo cierren
+                // El sheet se encoge al contenido pero nunca supera el 72% de pantalla.
+                // El truco: el inner Column scrollable usa fillMaxWidth (no fillMaxSize),
+                // lo que permite que el outer Column mida su altura real.
+                .heightIn(max = screenHeightDp * 0.72f)
                 .clickable(enabled = false) {}
                 .background(
                     color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 )
-                .statusBarsPadding()   // evita notch si el sheet sube hasta arriba
                 .navigationBarsPadding()
                 .imePadding(),
         ) {
@@ -142,7 +146,7 @@ fun VicoMenuSheet(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .padding(top = 10.dp, bottom = 4.dp)
+                    .padding(top = 8.dp, bottom = 2.dp)
                     .size(width = 40.dp, height = 4.dp)
                     .background(
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
@@ -173,13 +177,13 @@ fun VicoMenuSheet(
 
             HorizontalDivider(thickness = 0.5.dp)
 
-            // ── Contenido ─────────────────────────────────────────────────────
-            Box(
+            // ── Contenido scrollable — fillMaxWidth (no fillMaxSize) para que el
+            //    outer Column mida la altura real del contenido ──────────────────
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 when (selectedTab) {
                     0 -> AccionesTab(actions, onDismiss)
@@ -242,38 +246,48 @@ private fun DatosTab(a: VicoMenuActions, onDismiss: () -> Unit) {
 
 @Composable
 private fun VerTab(a: VicoMenuActions, onDismiss: () -> Unit) {
-    // Los checkboxes de Ver mantienen estado local para que el toggle sea
-    // inmediato visualmente. El cambio real se propaga vía los callbacks.
-    var systemUi            by remember { mutableStateOf(a.systemUi) }
-    var scans               by remember { mutableStateOf(a.scans) }
-    var calibratedScans     by remember { mutableStateOf(a.calibratedScans) }
-    var stream              by remember { mutableStateOf(a.stream) }
-    var calibratedStream    by remember { mutableStateOf(a.calibratedStream) }
-    var history             by remember { mutableStateOf(a.history) }
-    var calibratedHistory   by remember { mutableStateOf(a.calibratedHistory) }
-    var amounts             by remember { mutableStateOf(a.amounts) }
-    var meals               by remember { mutableStateOf(a.meals) }
-    var darkMode            by remember { mutableStateOf(a.darkMode) }
-    var glucoseFloat        by remember { mutableStateOf(a.glucoseFloat) }
+    // Estado local para feedback inmediato; el callback persiste el cambio.
+    var systemUi          by remember { mutableStateOf(a.systemUi) }
+    var scans             by remember { mutableStateOf(a.scans) }
+    var calibratedScans   by remember { mutableStateOf(a.calibratedScans) }
+    var stream            by remember { mutableStateOf(a.stream) }
+    var calibratedStream  by remember { mutableStateOf(a.calibratedStream) }
+    var history           by remember { mutableStateOf(a.history) }
+    var calibratedHistory by remember { mutableStateOf(a.calibratedHistory) }
+    var amounts           by remember { mutableStateOf(a.amounts) }
+    var meals             by remember { mutableStateOf(a.meals) }
+    var darkMode          by remember { mutableStateOf(a.darkMode) }
+    var glucoseFloat      by remember { mutableStateOf(a.glucoseFloat) }
 
+    // Calcular el nuevo valor antes de asignarlo para que el callback reciba
+    // siempre el valor correcto, independientemente del scheduler de Compose.
     Column {
-        MenuCheckbox("Interfaz del sistema", systemUi) {
-            systemUi = it; a.onSystemUiChange(it)
+        SectionLabel("General")
+        Row(Modifier.fillMaxWidth()) {
+            ToggleButton("Interfaz sistema", systemUi,    Modifier.weight(1f)) { val n = !systemUi;    systemUi = n;          a.onSystemUiChange(n) }
+            ToggleButton("Modo oscuro",      darkMode,    Modifier.weight(1f)) { val n = !darkMode;    darkMode = n;           a.onDarkModeChange(n) }
         }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 0.5.dp)
+        Row(Modifier.fillMaxWidth()) {
+            ToggleButton("Glucosa flotante", glucoseFloat, Modifier.weight(1f)) { val n = !glucoseFloat; glucoseFloat = n;    a.onGlucoseFloatChange(n) }
+            Spacer(Modifier.weight(1f))
+        }
         SectionLabel("Datos visibles")
-        MenuCheckbox("Escaneos",             scans)           { scans = it;             a.onScansChange(it) }
-        MenuCheckbox("Escaneos calibrados",  calibratedScans) { calibratedScans = it;   a.onCalibratedScansChange(it) }
-        MenuCheckbox("Stream",               stream)          { stream = it;            a.onStreamChange(it) }
-        MenuCheckbox("Stream calibrado",     calibratedStream){ calibratedStream = it;  a.onCalibratedStreamChange(it) }
-        MenuCheckbox("Historial",            history)         { history = it;           a.onHistoryChange(it) }
-        MenuCheckbox("Historial calibrado",  calibratedHistory){ calibratedHistory = it; a.onCalibratedHistoryChange(it) }
-        MenuCheckbox("Cantidades",           amounts)         { amounts = it;           a.onAmountsChange(it) }
-        MenuCheckbox("Comidas",              meals)           { meals = it;             a.onMealsChange(it) }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 0.5.dp)
-        SectionLabel("Pantalla")
-        MenuCheckbox("Modo oscuro",      darkMode)    { darkMode = it;    a.onDarkModeChange(it) }
-        MenuCheckbox("Glucosa flotante", glucoseFloat){ glucoseFloat = it; a.onGlucoseFloatChange(it) }
+        Row(Modifier.fillMaxWidth()) {
+            ToggleButton("Escaneos",          scans,           Modifier.weight(1f)) { val n = !scans;           scans = n;           a.onScansChange(n) }
+            ToggleButton("Escan. calibrados", calibratedScans, Modifier.weight(1f)) { val n = !calibratedScans; calibratedScans = n; a.onCalibratedScansChange(n) }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            ToggleButton("Stream",           stream,          Modifier.weight(1f)) { val n = !stream;          stream = n;          a.onStreamChange(n) }
+            ToggleButton("Stream calibrado", calibratedStream,Modifier.weight(1f)) { val n = !calibratedStream; calibratedStream = n; a.onCalibratedStreamChange(n) }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            ToggleButton("Historial",        history,         Modifier.weight(1f)) { val n = !history;         history = n;         a.onHistoryChange(n) }
+            ToggleButton("Hist. calibrado",  calibratedHistory,Modifier.weight(1f)){ val n = !calibratedHistory; calibratedHistory = n; a.onCalibratedHistoryChange(n) }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            ToggleButton("Cantidades",       amounts,         Modifier.weight(1f)) { val n = !amounts;         amounts = n;         a.onAmountsChange(n) }
+            ToggleButton("Comidas",          meals,           Modifier.weight(1f)) { val n = !meals;           meals = n;           a.onMealsChange(n) }
+        }
     }
 }
 
@@ -303,11 +317,49 @@ private fun TwoColumnGrid(items: List<Pair<String, () -> Unit>>) {
 }
 
 @Composable
+private fun ToggleButton(label: String, active: Boolean, modifier: Modifier = Modifier, onToggle: () -> Unit) {
+    // Activo: fondo primario sólido (color del tema del usuario).
+    // Inactivo: fondo transparente con borde sutil — diferencia visual clara ON vs OFF.
+    val shape = RoundedCornerShape(10.dp)
+    if (active) {
+        Button(
+            onClick  = onToggle,
+            modifier = modifier.padding(4.dp),
+            shape    = shape,
+            colors   = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor   = MaterialTheme.colorScheme.onPrimary,
+            ),
+        ) {
+            Text(label, maxLines = 2, style = MaterialTheme.typography.bodyMedium)
+        }
+    } else {
+        OutlinedButton(
+            onClick  = onToggle,
+            modifier = modifier.padding(4.dp),
+            shape    = shape,
+            colors   = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.70f),
+            ),
+            border   = ButtonDefaults.outlinedButtonBorder(enabled = true),
+        ) {
+            Text(label, maxLines = 2, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
 private fun MenuButton(label: String, onClick: () -> Unit) {
-    FilledTonalButton(
+    // Use Button (primary/onPrimary) instead of FilledTonalButton (primaryContainer)
+    // so the button colour always matches the user's custom Juggluco theme.
+    Button(
         onClick  = onClick,
         modifier = Modifier.fillMaxWidth().padding(4.dp),
         shape    = RoundedCornerShape(10.dp),
+        colors   = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor   = MaterialTheme.colorScheme.onPrimary,
+        ),
     ) {
         Text(label, maxLines = 2, style = MaterialTheme.typography.bodyMedium)
     }
@@ -319,22 +371,30 @@ private fun MenuCheckbox(label: String, checked: Boolean, onCheckedChange: (Bool
         modifier          = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            // Compact padding so the Ver tab matches the visual density of the button grid
+            .padding(horizontal = 8.dp, vertical = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
-        Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Checkbox(
+            checked         = checked,
+            onCheckedChange = onCheckedChange,
+            colors          = CheckboxDefaults.colors(
+                checkedColor   = MaterialTheme.colorScheme.primary,
+                checkmarkColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+        )
+        Text(label, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text     = text,
-        style    = MaterialTheme.typography.labelSmall,
-        color    = MaterialTheme.colorScheme.primary,
+        text       = text,
+        style      = MaterialTheme.typography.labelSmall,
+        color      = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp),
+        modifier   = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 0.dp),
     )
 }
