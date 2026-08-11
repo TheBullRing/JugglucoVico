@@ -88,6 +88,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  * Root composable. Call from the ComposeView created in MainActivity.startdisplay()
  * when [tk.glucodata.Applic.useVicoChart()] is true.
  *
+ * El chart y el menú viven en dos contextos de tema distintos:
+ *  - El chart usa [GlucoseTheme] (puede invertir colores según preferencia del usuario).
+ *  - El menú usa el MaterialTheme heredado de la Activity (tema dinámico del dispositivo).
+ *  Esto evita que los colores del menú diverjan del tema Material You del teléfono.
+ *
  * @param viewModel   The chart ViewModel (created via [GlucoseChartViewModel.Factory]).
  * @param menuActions All menu actions and toggle states for the Compose menu sheet.
  * @param onLongPress Invoked when the user long-presses a data point.
@@ -116,53 +121,62 @@ fun GlucoseChartScreen(
 
     var menuVisible by remember { mutableStateOf(false) }
 
-    GlucoseTheme(invertColors = settings.invertColors) {
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .semantics { contentDescription = "Glucose chart screen" },
-            color = MaterialTheme.colorScheme.background,
-        ) {
-            Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
-                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    val isLandscape = maxWidth > 600.dp
-                    if (isLandscape) {
-                        LandscapeLayout(
-                            entries        = entries,
-                            settings       = settings,
-                            windowEndMs    = windowEndMs,
-                            windowMs       = windowMs,
-                            windowEndState = windowEndState,
-                            windowMsState  = windowMsState,
-                        )
-                    } else {
-                        PortraitLayout(
-                            entries        = entries,
-                            settings       = settings,
-                            windowEndMs    = windowEndMs,
-                            windowMs       = windowMs,
-                            windowEndState = windowEndState,
-                            windowMsState  = windowMsState,
-                        )
+    // El Box raíz ocupa toda la pantalla incluyendo barras del sistema.
+    // El chart aplica systemBarsPadding internamente; el menú overlay lo ignora
+    // para poder cubrir toda la pantalla (incluyendo nav bar) con el scrim.
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        // ── Chart con su propio tema (puede invertir colores) ────────────────
+        GlucoseTheme(invertColors = settings.invertColors) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics { contentDescription = "Glucose chart screen" },
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val isLandscape = maxWidth > 600.dp
+                        if (isLandscape) {
+                            LandscapeLayout(
+                                entries        = entries,
+                                settings       = settings,
+                                windowEndMs    = windowEndMs,
+                                windowMs       = windowMs,
+                                windowEndState = windowEndState,
+                                windowMsState  = windowMsState,
+                            )
+                        } else {
+                            PortraitLayout(
+                                entries        = entries,
+                                settings       = settings,
+                                windowEndMs    = windowEndMs,
+                                windowMs       = windowMs,
+                                windowEndState = windowEndState,
+                                windowMsState  = windowMsState,
+                            )
+                        }
                     }
-                }
 
-                // Botón ⌄ — abre el VicoMenuSheet directamente (tab 0 = Acciones)
-                MenuButton(
-                    onClick  = { menuVisible = true },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp),
-                )
-
-                // Menú Compose superpuesto sobre el chart
-                if (menuVisible) {
-                    VicoMenuSheet(
-                        actions   = menuActions,
-                        onDismiss = { menuVisible = false },
+                    // Botón ⌄ — encima del chart, respeta el padding del sistema
+                    MenuButton(
+                        onClick  = { menuVisible = true },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp),
                     )
                 }
             }
+        }
+
+        // ── Menú overlay — hereda el MaterialTheme de la Activity ────────────
+        // Está fuera del GlucoseTheme para que sus colores vengan del tema
+        // dinámico (Material You) del dispositivo, igual que el tab "Ver".
+        if (menuVisible) {
+            VicoMenuSheet(
+                actions   = menuActions,
+                onDismiss = { menuVisible = false },
+            )
         }
     }
 }

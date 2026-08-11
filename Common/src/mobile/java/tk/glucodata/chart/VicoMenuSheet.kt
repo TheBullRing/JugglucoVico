@@ -17,6 +17,9 @@ package tk.glucodata.chart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -25,7 +28,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -195,15 +197,15 @@ fun VicoMenuSheet(
 
 @Composable
 private fun AccionesTab(a: VicoMenuActions, onDismiss: () -> Unit) {
-    TwoColumnGrid {
-        MenuButton("Relojes")    { onDismiss(); a.onWatch.run() }
-        MenuButton("Sensor")     { onDismiss(); a.onSensor.run() }
-        MenuButton("Ajustes")    { onDismiss(); a.onSettings.run() }
-        MenuButton("Acerca de")  { onDismiss(); a.onAbout.run() }
-        MenuButton("Exportar")   { onDismiss(); a.onExport.run() }
-        MenuButton("Clon")       { onDismiss(); a.onMirror.run() }
-        MenuButton("Cerrar app") { onDismiss(); a.onClose.run() }
-    }
+    TwoColumnGrid(listOf(
+        "Relojes"    to { onDismiss(); a.onWatch.run() },
+        "Sensor"     to { onDismiss(); a.onSensor.run() },
+        "Ajustes"    to { onDismiss(); a.onSettings.run() },
+        "Acerca de"  to { onDismiss(); a.onAbout.run() },
+        "Exportar"   to { onDismiss(); a.onExport.run() },
+        "Clon"       to { onDismiss(); a.onMirror.run() },
+        "Cerrar app" to { onDismiss(); a.onClose.run() },
+    ))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -213,24 +215,24 @@ private fun AccionesTab(a: VicoMenuActions, onDismiss: () -> Unit) {
 @Composable
 private fun DatosTab(a: VicoMenuActions, onDismiss: () -> Unit) {
     Column {
-        TwoColumnGrid {
-            MenuButton("Nueva cantidad") { onDismiss(); a.onNewAmount.run() }
-            MenuButton("Lista")          { onDismiss(); a.onList.run() }
-            MenuButton("Estadísticas")   { onDismiss(); a.onStatistics.run() }
-            MenuButton("Hablar")         { onDismiss(); a.onTalk.run() }
-            MenuButton("Último escaneo") { onDismiss(); a.onLastScan.run() }
-            MenuButton("Ahora")          { onDismiss(); a.onNow.run() }
-            MenuButton("Buscar")         { onDismiss(); a.onSearch.run() }
-            MenuButton("Fecha")          { onDismiss(); a.onDate.run() }
-        }
+        TwoColumnGrid(listOf(
+            "Nueva cantidad" to { onDismiss(); a.onNewAmount.run() },
+            "Lista"          to { onDismiss(); a.onList.run() },
+            "Estadísticas"   to { onDismiss(); a.onStatistics.run() },
+            "Hablar"         to { onDismiss(); a.onTalk.run() },
+            "Último escaneo" to { onDismiss(); a.onLastScan.run() },
+            "Ahora"          to { onDismiss(); a.onNow.run() },
+            "Buscar"         to { onDismiss(); a.onSearch.run() },
+            "Fecha"          to { onDismiss(); a.onDate.run() },
+        ))
         Spacer(Modifier.height(8.dp))
         SectionLabel("Navegar por fechas")
-        TwoColumnGrid {
-            MenuButton("◀ Día atrás")      { onDismiss(); a.onDayBack.run() }
-            MenuButton("Día adelante ▶")   { onDismiss(); a.onDayLater.run() }
-            MenuButton("◀ Semana atrás")   { onDismiss(); a.onWeekBack.run() }
-            MenuButton("Semana adelante ▶") { onDismiss(); a.onWeekLater.run() }
-        }
+        TwoColumnGrid(listOf(
+            "◀ Día atrás"       to { onDismiss(); a.onDayBack.run() },
+            "Día adelante ▶"    to { onDismiss(); a.onDayLater.run() },
+            "◀ Semana atrás"    to { onDismiss(); a.onWeekBack.run() },
+            "Semana adelante ▶" to { onDismiss(); a.onWeekLater.run() },
+        ))
     }
 }
 
@@ -280,25 +282,22 @@ private fun VerTab(a: VicoMenuActions, onDismiss: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Distribuye sus hijos en 2 columnas de igual ancho usando SubcomposeLayout.
- * Cada hijo ocupa exactamente la mitad del ancho disponible.
+ * Grid de 2 columnas usando LazyVerticalGrid.
+ * Soporta número impar de ítems: el último item ocupa su celda normal (media fila),
+ * sin desbordarse ni romper el layout.
+ * La altura se limita a un máximo para que el scroll exterior funcione correctamente.
  */
 @Composable
-private fun TwoColumnGrid(content: @Composable () -> Unit) {
-    SubcomposeLayout { constraints ->
-        val colW = constraints.maxWidth / 2
-        val childConstraints = constraints.copy(minWidth = 0, maxWidth = colW)
-        val placeables = subcompose("grid", content).map { it.measure(childConstraints) }
-        val rows = placeables.chunked(2)
-        val rowHeights = rows.map { row -> row.maxOf { it.height } }
-        val totalH = rowHeights.sum()
-        layout(constraints.maxWidth, totalH) {
-            var curY = 0
-            rows.forEachIndexed { i, row ->
-                val rowH = rowHeights[i]
-                row.forEachIndexed { j, p -> p.placeRelative(x = j * colW, y = curY) }
-                curY += rowH
-            }
+private fun TwoColumnGrid(items: List<Pair<String, () -> Unit>>) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 600.dp),
+        userScrollEnabled = false, // el scroll lo gestiona el Column padre
+    ) {
+        items(items) { (label, onClick) ->
+            MenuButton(label = label, onClick = onClick)
         }
     }
 }
