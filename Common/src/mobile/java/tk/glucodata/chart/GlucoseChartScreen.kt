@@ -28,6 +28,7 @@
  */
 package tk.glucodata.chart
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -143,7 +145,8 @@ fun GlucoseChartScreen(
             ) {
                 Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val isLandscape = maxWidth > 600.dp
+                        val configuration = LocalConfiguration.current
+                        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                         if (isLandscape) {
                             LandscapeLayout(
                                 entries        = entries,
