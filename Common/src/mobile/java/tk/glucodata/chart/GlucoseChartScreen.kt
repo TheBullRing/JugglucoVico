@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -212,13 +213,25 @@ private fun ChartTopBar(onMenuClick: () -> Unit) {
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Título a la izquierda — titleSmall para no competir con el valor de glucosa
-        Text(
-            text       = "Juggluco",
-            style      = MaterialTheme.typography.titleSmall,
-            color      = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = FontWeight.SemiBold,
-        )
+        // Icono de la app (mipmap) + nombre — 24dp, sin aumentar la altura de 40dp
+        Row(
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            androidx.compose.foundation.Image(
+                painter            = painterResource(id = android.R.mipmap.sym_def_app_icon),
+                contentDescription = null,
+                modifier           = Modifier
+                    .size(24.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+            )
+            Text(
+                text       = "Juggluco",
+                style      = MaterialTheme.typography.titleSmall,
+                color      = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
         // Icono de menú sin fondo: zona táctil de 40×40 dp con padding interior
         Box(
             modifier = Modifier
