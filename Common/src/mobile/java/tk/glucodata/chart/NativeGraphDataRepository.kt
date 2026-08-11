@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.merge
+import tk.glucodata.Applic
 import tk.glucodata.Natives
 import tk.glucodata.MainActivity
 
@@ -241,14 +242,15 @@ class NativeGraphDataRepository private constructor() : GraphDataRepository {
         Log.d(TAG, "snapshotSettings: sensorEndsRaw=$sensorEndsRaw sensorEndsMs=$sensorEndsMs")
 
         return ChartSettings(
-            targetLow    = targetLow,
-            targetHigh   = targetHigh,
-            veryLow      = veryLow,
-            veryHigh     = veryHigh,
-            invertColors = Natives.getInvertColors(),
-            unit         = if (ismmol) GlucoseUnit.MMOL else GlucoseUnit.MGDL,
-            isRtl        = MainActivity.rtl,
-            sensorEndsMs = sensorEndsMs,
+            targetLow       = targetLow,
+            targetHigh      = targetHigh,
+            veryLow         = veryLow,
+            veryHigh        = veryHigh,
+            invertColors    = Natives.getInvertColors(),
+            unit            = if (ismmol) GlucoseUnit.MMOL else GlucoseUnit.MGDL,
+            isRtl           = MainActivity.rtl,
+            sensorEndsMs    = sensorEndsMs,
+            portraitPivoted = Applic.usePortraitPivoted(),
         )
     }
 }

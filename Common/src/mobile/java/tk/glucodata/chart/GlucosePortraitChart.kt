@@ -20,6 +20,14 @@
  */
 package tk.glucodata.chart
 
+import tk.glucodata.Natives
+
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -31,12 +39,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.MutableLongState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
@@ -49,15 +59,13 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
-private val COLOR_IN_RANGE    = Color(0xFF43A047)   // verde: en rango
-private val COLOR_WARNING     = Color(0xFFFFB300)   // amarillo: alto o bajo (zona intermedia)
-private val COLOR_CRITICAL    = Color(0xFFE53935)   // rojo: muy alto o muy bajo
-private val COLOR_TARGET_BAND = Color(0x1843A047)   // fondo verde muy suave: en rango
-private val COLOR_WARN_BAND   = Color(0x14FFB300)   // fondo amarillo muy suave: zona intermedia
-private val COLOR_CRIT_BAND   = Color(0x14E53935)   // fondo rojo muy suave: muy alto / muy bajo
-private val COLOR_GRID        = Color(0x22888888)   // cuadrícula tenue
-private val COLOR_AXIS_TEXT   = Color(0xFF888888)
-private val COLOR_AXIS_TICK   = Color(0xFFAAAAAA)
+private val COLOR_IN_RANGE    = Color(0xFF2ECC71)   // verde accesible: en rango
+private val COLOR_WARNING     = Color(0xFFF39C12)   // naranja accesible: zona intermedia
+private val COLOR_CRITICAL    = Color(0xFFE74C3C)   // rojo accesible: fuera de rango extremo
+private val COLOR_TARGET_BAND = Color(0x0D2ECC71)   // franja objetivo ~5% alpha
+private val COLOR_GRID        = Color(0x1A8E8E93)   // cuadrícula 10% alpha neutro
+private val COLOR_AXIS_TEXT   = Color(0xFF8E8E93)   // texto ejes: gris neutro iOS/Material
+private val COLOR_AXIS_TICK   = Color(0xFFBBBBBB)
 
 @Composable
 fun GlucosePortraitChart(
@@ -128,15 +136,25 @@ fun GlucosePortraitChart(
         val curEnd        = windowEndState.longValue
         val curMs         = windowMsState.floatValue
         val windowStartMs = (curEnd - curMs).toLong()
-        // paddingStart para etiquetas de tiempo, bottom para etiquetas de glucosa inferiores.
-        // top mínimo: solo espacio para los ticks (8dp). La etiqueta "mg/dL" se dibuja
-        // en el margen izquierdo dentro del propio canvas para no crear espacio en blanco.
+
+        // Pulso animado del punto actual: halo que oscila entre 6dp y 14dp
+        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+        val pulseRadius by infiniteTransition.animateFloat(
+            initialValue = 6f,
+            targetValue  = 14f,
+            animationSpec = infiniteRepeatable(
+                animation  = tween(1200, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "pulseRadius",
+        )
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 44.dp, end = 12.dp, top = 8.dp, bottom = 36.dp)
         ) {
-            drawPortraitChart(entries, settings, windowStartMs, curEnd)
+            drawPortraitChart(entries, settings, windowStartMs, curEnd, pulseRadius.dp.toPx())
         }
     }
 }
@@ -146,6 +164,7 @@ private fun DrawScope.drawPortraitChart(
     settings:      ChartSettings,
     windowStartMs: Long,
     windowEndMs:   Long,
+    pulseRadius:   Float = 8.dp.toPx(),
 ) {
     val canvasW = size.width
     val canvasH = size.height
@@ -177,21 +196,10 @@ private fun DrawScope.drawPortraitChart(
     val xBandVeryLeft  = glucoseToX(veryLow).coerceAtLeast(0f)
     val xBandVeryRight = glucoseToX(veryHigh).coerceAtMost(canvasW)
 
-    // ── 5 bandas de fondo: muy bajo | bajo | en rango | alto | muy alto ──────
-    // Muy bajo (rojo): de 0 a veryLow
-    if (xBandVeryLeft > 0f)
-        drawRect(COLOR_CRIT_BAND,   Offset(0f, 0f),                    Size(xBandVeryLeft, canvasH))
-    // Bajo (amarillo): de veryLow a targetLow
-    if (xBandLeft > xBandVeryLeft)
-        drawRect(COLOR_WARN_BAND,   Offset(xBandVeryLeft, 0f),         Size((xBandLeft - xBandVeryLeft).coerceAtLeast(0f), canvasH))
-    // En rango (verde): de targetLow a targetHigh
-    drawRect(COLOR_TARGET_BAND,     Offset(xBandLeft.coerceAtLeast(0f), 0f), Size((xBandRight - xBandLeft).coerceAtLeast(0f), canvasH))
-    // Alto (amarillo): de targetHigh a veryHigh
-    if (xBandVeryRight > xBandRight)
-        drawRect(COLOR_WARN_BAND,   Offset(xBandRight.coerceAtLeast(0f), 0f), Size((xBandVeryRight - xBandRight).coerceAtLeast(0f), canvasH))
-    // Muy alto (rojo): de veryHigh a borde derecho
-    if (xBandVeryRight < canvasW)
-        drawRect(COLOR_CRIT_BAND,   Offset(xBandVeryRight, 0f),        Size((canvasW - xBandVeryRight).coerceAtLeast(0f), canvasH))
+    // ── Solo franja objetivo (targetLow..targetHigh) en verde muy suave ──────
+    // Mismo tratamiento que el landscape: fondo neutro excepto la zona objetivo.
+    drawRect(COLOR_TARGET_BAND, Offset(xBandLeft.coerceAtLeast(0f), 0f),
+             Size((xBandRight - xBandLeft).coerceAtLeast(0f), canvasH))
 
     // ── Cuadricula horizontal (lineas de hora) punteada ──────────────────────
     val gridIntervalMs = bestGridInterval(windowEndMs - windowStartMs)
@@ -217,8 +225,10 @@ private fun DrawScope.drawPortraitChart(
         val step = if (unit == GlucoseUnit.MMOL) 2f else 40f
         ticks.forEach { if ((it % step) < 0.01f) add(it) }
     }
-    val lastTickIdx = ticks.lastIndex
-    for ((i, tick) in ticks.withIndex()) {
+    // isLast solo si el tick está realmente en el extremo derecho del canvas visible
+    val visibleTicks = ticks.filter { glucoseToX(it) in -0.5f..(canvasW + 0.5f) }
+    val lastVisibleTick = visibleTicks.lastOrNull()
+    for (tick in ticks) {
         val x = glucoseToX(tick)
         if (x < -0.5f || x > canvasW + 0.5f) continue
         val isThreshold = (tick == targetLow || tick == targetHigh)
@@ -229,17 +239,17 @@ private fun DrawScope.drawPortraitChart(
                 drawLine(COLOR_GRID, Offset(x, 0f), Offset(x, canvasH), 0.6.dp.toPx())
         }
         if (showLabel) {
-            // Tick pequeño solo en el borde inferior (el superior ya no tiene margen suficiente)
             drawLine(COLOR_AXIS_TICK, Offset(x, canvasH), Offset(x, canvasH - 4.dp.toPx()), 1.dp.toPx())
-            val isLast = (i == lastTickIdx)
-            // Etiqueta solo en el borde inferior — integrada sin espacio en blanco extra
+            // "+" solo si el tick es el último visible Y el rango de datos lo supera
+            val isLast = tick == lastVisibleTick && dataMax > tick
             drawGlucoseLabel(tick, unit, x, canvasH + 4.dp.toPx(), isLast = isLast)
         }
     }
 
-    // ── Etiqueta de unidad: esquina superior izquierda dentro del canvas ──────
-    // Coordenadas positivas → dentro del área del canvas, no en el margen de horas
-    drawUnitLabel(unit, 4.dp.toPx(), 4.dp.toPx())
+    // ── Etiqueta de unidad: en el margen superior izquierdo (fuera del área de datos) ──
+    // Se dibuja con coordenada X negativa para que caiga en el padding de 44dp reservado
+    // para las etiquetas de hora, justo encima del primer tick de hora.
+    drawUnitLabel(unit, -40.dp.toPx(), (-8).dp.toPx())
 
     // ── Umbrales targetLow / targetHigh: líneas discontinuas sutiles ─────────
     drawDashedVLine(xBandLeft,  0f, canvasH, COLOR_WARNING.copy(alpha = 0.55f), 1.dp.toPx(), 5.dp.toPx(), 4.dp.toPx())
@@ -255,8 +265,102 @@ private fun DrawScope.drawPortraitChart(
         drawCircle(glucoseColor(v, targetLow, targetHigh, veryLow, veryHigh), 5.dp.toPx(), Offset(glucoseToX(v), timeToY(e.timestampMs)))
         return
     }
+    // ── Predicción 20 min: cono de incertidumbre + línea punteada ────────────
+    // La pendiente usa:
+    //   1. TR nativa del sensor si está disponible (Natives.lastglucose().rate, mg/dL/min).
+    //   2. En su defecto, pendiente lineal sobre la ventana temporal de los últimos 20 min.
+    val lastEntry = visible.maxByOrNull { it.timestampMs }
+    val nowMs     = System.currentTimeMillis()
+    if (lastEntry != null && nowMs - lastEntry.timestampMs <= 10L * 60_000L) {
+        // Obtener TR nativa del sensor (NaN → null)
+        val sensorRate: Float? = try {
+            Natives.lastglucose()?.rate?.let { r -> if (r.isNaN()) null else r }
+        } catch (_: Exception) { null }
+
+        // Calcular slope con misma lógica que StatsPanel + amortiguación en pico prandial
+        val rawSlope: Float? = if (sensorRate != null) {
+            sensorRate
+        } else {
+            val windowStart20 = lastEntry.timestampMs - 20L * 60_000L
+            val recentForSlope = entries
+                .filter { it.sensorIndex == lastEntry.sensorIndex && it.timestampMs >= windowStart20 }
+                .sortedBy { it.timestampMs }
+            if (recentForSlope.size >= 2) {
+                val oldest = recentForSlope.first()
+                val newest = recentForSlope.last()
+                val dtMin  = (newest.timestampMs - oldest.timestampMs) / 60_000f
+                if (dtMin > 0f) (newest.valueMgdL - oldest.valueMgdL) / dtMin else null
+            } else null
+        }
+        // Δ instantáneo entre los dos últimos puntos visibles
+        val prevEntry = visible.sortedBy { it.timestampMs }.let { s -> if (s.size >= 2) s[s.size - 2] else null }
+        val instantDelta = if (prevEntry != null) lastEntry.valueMgdL - prevEntry.valueMgdL else 0f
+        // Amortiguación: glucosa >200 + cambio de signo (pico prandial en reversión)
+        val slope: Float? = if (rawSlope != null && lastEntry.valueMgdL > 200f && rawSlope * instantDelta < 0f)
+            rawSlope * 0.5f else rawSlope
+
+        if (slope != null) {
+            val newest      = lastEntry
+            val predMs      = 20L * 60_000L
+            val predMgdL    = (newest.valueMgdL + slope * 20f).coerceIn(20f, 400f)
+            val predValue   = toDisplayUnit(predMgdL, unit)
+            val ptX0        = glucoseToX(toDisplayUnit(newest.valueMgdL, unit))
+            val ptY0        = timeToY(newest.timestampMs)
+            val ptX1Raw     = glucoseToX(predValue)
+            // Y del punto futuro sin clamp para calcular intersección con borde
+            val ptY1Raw     = timeToY(newest.timestampMs + predMs)
+            val predColor   = glucoseColor(predValue, targetLow, targetHigh, veryLow, veryHigh)
+
+            // Si ptY1Raw supera el canvas, recortamos linealmente al borde inferior
+            // y ajustamos X proporcionalmente para mantener la dirección correcta.
+            val rangeY = (ptY1Raw - ptY0).coerceAtLeast(1f)
+            val rangeX = ptX1Raw - ptX0
+            val (ptX1, ptY1) = if (ptY1Raw <= canvasH) {
+                Pair(ptX1Raw, ptY1Raw)
+            } else {
+                // t = fracción del recorrido que cabe en el canvas
+                val t = (canvasH - ptY0) / rangeY
+                Pair(ptX0 + rangeX * t, canvasH)
+            }
+
+            // Solo dibujar si hay recorrido visible (ptY1 > ptY0)
+            if (ptY1 > ptY0 + 2f) {
+                val visibleRangeY = ptY1 - ptY0
+
+                // Cono de incertidumbre: alpha más visible (0.13)
+                val halfCone = 18.dp.toPx()
+                val conePath = Path().apply {
+                    moveTo(ptX0, ptY0)
+                    lineTo((ptX1 - halfCone).coerceAtLeast(0f), ptY1)
+                    lineTo((ptX1 + halfCone).coerceAtMost(canvasW), ptY1)
+                    close()
+                }
+                drawPath(conePath, predColor.copy(alpha = 0.13f))
+
+                // Línea punteada central
+                val dashPx = 7.dp.toPx(); val gapPx = 5.dp.toPx()
+                var cy2 = ptY0
+                while (cy2 < ptY1) {
+                    val ey = minOf(cy2 + dashPx, ptY1)
+                    val t0 = (cy2 - ptY0) / visibleRangeY
+                    val t1 = (ey  - ptY0) / visibleRangeY
+                    drawLine(predColor.copy(alpha = 0.7f),
+                        Offset(ptX0 + rangeX * t0, cy2),
+                        Offset(ptX0 + rangeX * t1, ey), 2.5.dp.toPx())
+                    cy2 += dashPx + gapPx
+                }
+
+                // Punto final (solo si está dentro del canvas)
+                if (ptY1Raw <= canvasH) {
+                    drawCircle(predColor.copy(alpha = 0.30f), 7.dp.toPx(), Offset(ptX1, ptY1))
+                    drawCircle(predColor.copy(alpha = 0.65f), 3.5.dp.toPx(), Offset(ptX1, ptY1))
+                }
+            }
+        }
+    }
+
     for ((_, se) in visible.groupBy { it.sensorIndex }.toSortedMap())
-        drawGlucoseLine(se, targetLow, targetHigh, veryLow, veryHigh, ::timeToY, ::glucoseToX, unit, canvasH)
+        drawGlucoseLine(se, targetLow, targetHigh, veryLow, veryHigh, ::timeToY, ::glucoseToX, unit, canvasH, pulseRadius)
 }
 
 private fun DrawScope.drawGlucoseLine(
@@ -269,66 +373,79 @@ private fun DrawScope.drawGlucoseLine(
     glucoseToX:    (Float) -> Float,
     unit:          GlucoseUnit,
     canvasH:       Float,
+    pulseRadius:   Float = 8.dp.toPx(),
 ) {
     if (sensorEntries.isEmpty()) return
 
-    // ── 1. Área de relleno con gradiente horizontal (eje transpuesto) ─────────
-    // En el gráfico portrait el eje X es glucosa, el eje Y es tiempo.
-    // El relleno va desde la curva hasta el borde IZQUIERDO del canvas (valor mínimo),
-    // creando un gradiente que se desvanece hacia la izquierda — exactamente como
-    // el gradiente vertical en los gráficos landscape estándar.
-    val fillPath = Path().apply {
-        // Empezar en el primer punto pegado al borde izquierdo
-        val firstVal = toDisplayUnit(sensorEntries.first().valueMgdL, unit)
-        moveTo(0f, timeToY(sensorEntries.first().timestampMs))
-        lineTo(glucoseToX(firstVal), timeToY(sensorEntries.first().timestampMs))
-        // Recorrer todos los puntos
-        for (i in 1 until sensorEntries.size) {
-            val v = toDisplayUnit(sensorEntries[i].valueMgdL, unit)
-            lineTo(glucoseToX(v), timeToY(sensorEntries[i].timestampMs))
-        }
-        // Cerrar por el borde izquierdo (x=0) recorriendo de vuelta en Y
-        lineTo(0f, timeToY(sensorEntries.last().timestampMs))
-        close()
+    // Precomputar coordenadas para reutilizar en relleno, línea y punto
+    data class Pt(val x: Float, val y: Float, val color: Color)
+    val pts = sensorEntries.map { e ->
+        val v = toDisplayUnit(e.valueMgdL, unit)
+        Pt(glucoseToX(v), timeToY(e.timestampMs), glucoseColor(v, targetLow, targetHigh, veryLow, veryHigh))
     }
-    // Color del relleno: zona del último punto (lectura más reciente)
+
+    // ── 1. Área de relleno con gradiente horizontal (eje transpuesto) ─────────
     val lastVal   = toDisplayUnit(sensorEntries.last().valueMgdL, unit)
     val fillColor = glucoseColor(lastVal, targetLow, targetHigh, veryLow, veryHigh)
+    val fillPath = Path().apply {
+        moveTo(0f, pts.first().y)
+        lineTo(pts.first().x, pts.first().y)
+        for (i in 1 until pts.size) {
+            val p0 = pts[i - 1]; val p1 = pts[i]
+            // Bézier ligero: punto de control a 1/3 del segmento en X, sin mover Y
+            // → suaviza ángulos sin aplanar picos clínicos
+            val cpX = p0.x + (p1.x - p0.x) * 0.33f
+            cubicTo(cpX, p0.y, cpX, p1.y, p1.x, p1.y)
+        }
+        lineTo(0f, pts.last().y)
+        close()
+    }
     val fillBrush = Brush.horizontalGradient(
-        colors = listOf(Color.Transparent, fillColor.copy(alpha = 0.18f)),
+        colors = listOf(Color.Transparent, fillColor.copy(alpha = 0.15f)),
         startX = 0f,
-        endX   = glucoseToX(lastVal).coerceAtLeast(1f),
+        endX   = pts.last().x.coerceAtLeast(1f),
     )
     drawPath(fillPath, fillBrush)
 
-    // ── 2. Línea principal ────────────────────────────────────────────────────
-    val strokePx = 2.5.dp.toPx()
-    for (i in 0 until sensorEntries.size - 1) {
-        val a    = sensorEntries[i]; val b = sensorEntries[i + 1]
-        val aVal = toDisplayUnit(a.valueMgdL, unit)
-        val bVal = toDisplayUnit(b.valueMgdL, unit)
-        drawLine(
-            glucoseColor((aVal + bVal) / 2f, targetLow, targetHigh, veryLow, veryHigh),
-            Offset(glucoseToX(aVal), timeToY(a.timestampMs)),
-            Offset(glucoseToX(bVal), timeToY(b.timestampMs)),
-            strokePx,
-            cap = StrokeCap.Round,
+    // ── 2. Glow sutil + línea principal Bézier coloreada por zona ────────────
+    val strokePx = 3.5.dp.toPx()
+    val glowPx   = strokePx + 3.dp.toPx()  // glow = línea más ancha y semitransparente
+    for (i in 0 until pts.size - 1) {
+        val p0 = pts[i]; val p1 = pts[i + 1]
+        val cpX = p0.x + (p1.x - p0.x) * 0.33f
+        val segColor = glucoseColor(
+            (toDisplayUnit(sensorEntries[i].valueMgdL, unit) + toDisplayUnit(sensorEntries[i + 1].valueMgdL, unit)) / 2f,
+            targetLow, targetHigh, veryLow, veryHigh,
         )
+        val path = Path().apply {
+            moveTo(p0.x, p0.y)
+            cubicTo(cpX, p0.y, cpX, p1.y, p1.x, p1.y)
+        }
+        // Glow: misma curva más gruesa y semitransparente debajo
+        drawPath(path, segColor.copy(alpha = 0.18f), style = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = glowPx, cap = StrokeCap.Round,
+        ))
+        // Línea principal encima
+        drawPath(path, segColor, style = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = strokePx, cap = StrokeCap.Round,
+        ))
     }
 
-    // ── 3. Punto final con halo (lectura más reciente) ────────────────────────
-    val last     = sensorEntries.last()
-    val lastDisp = toDisplayUnit(last.valueMgdL, unit)
+    // ── 3. Punto final: círculo blanco con borde grueso del color de zona ────
+    val last      = sensorEntries.last()
+    val lastDisp  = toDisplayUnit(last.valueMgdL, unit)
     val lastColor = glucoseColor(lastDisp, targetLow, targetHigh, veryLow, veryHigh)
     val cx = glucoseToX(lastDisp)
     val cy = timeToY(last.timestampMs)
-    drawCircle(lastColor.copy(alpha = 0.20f), 8.dp.toPx(),  Offset(cx, cy))  // halo exterior
-    drawCircle(lastColor,                     4.dp.toPx(),  Offset(cx, cy))  // punto sólido
-    drawCircle(Color.White.copy(alpha = 0.8f),1.5.dp.toPx(),Offset(cx, cy)) // brillo central
+    // Halo pulsante animado
+    drawCircle(lastColor.copy(alpha = 0.12f), pulseRadius, Offset(cx, cy))
+    // Borde exterior del color de zona (stroke grueso)
+    drawCircle(lastColor, 7.dp.toPx(), Offset(cx, cy),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5.dp.toPx()))
+    // Relleno blanco interior
+    drawCircle(Color.White, 4.5.dp.toPx(), Offset(cx, cy))
 
     // ── 4. Etiqueta de fecha/hora junto al punto actual ───────────────────────
-    // Siempre visible: permite ubicarse fácilmente en historiales de días anteriores.
-    // Formato: "DD MMM HH:mm" si el día difiere del actual, "HH:mm" si es hoy.
     drawCurrentReadingLabel(last.timestampMs, cx, cy)
 }
 
@@ -345,26 +462,56 @@ private fun DrawScope.drawCurrentReadingLabel(timestampMs: Long, cx: Float, cy: 
     )
     val months = arrayOf("ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic")
     val dateStr = "${cal.get(java.util.Calendar.DAY_OF_MONTH)} ${months[cal.get(java.util.Calendar.MONTH)]}"
-    // Siempre fecha + hora: el usuario necesita ubicarse en el historial incluso navegando hoy
     val label = "$dateStr $timeStr"
 
-    val paint = android.graphics.Paint().apply {
-        color       = COLOR_AXIS_TEXT.toArgb()
-        textSize    = 34f   // suficientemente grande para leer con un vistazo rápido
-        isAntiAlias = true
+    val fontSize  = 26f
+    val textPaint = android.graphics.Paint().apply {
+        color          = COLOR_AXIS_TEXT.toArgb()
+        textSize       = fontSize
+        isAntiAlias    = true
         isFakeBoldText = true
+        textAlign      = android.graphics.Paint.Align.LEFT
     }
-    val textW = paint.measureText(label)
-    val margin = 10.dp.toPx()
-    // Colocar a la derecha si cabe, a la izquierda en caso contrario
-    val labelX = if (cx + margin + textW < size.width) {
-        paint.textAlign = android.graphics.Paint.Align.LEFT
-        cx + margin
-    } else {
-        paint.textAlign = android.graphics.Paint.Align.RIGHT
-        cx - margin
+    val textW    = textPaint.measureText(label)
+    val textH    = fontSize
+    val padH     = 5.dp.toPx()
+    val padV     = 3.dp.toPx()
+    val radius   = 4.dp.toPx()
+    val gapAbove = 10.dp.toPx()
+    val gapSide  = 8.dp.toPx()
+    val boxH     = textH + padV * 2
+
+    // En portrait el punto actual suele estar en la zona superior del canvas (tiempo reciente = Y bajo).
+    // Si el punto está en el 35% superior, colocamos la etiqueta DEBAJO para no salir del canvas.
+    // En caso contrario la colocamos encima como siempre, con clamp al borde superior (margen 4dp).
+    val topMargin = 4.dp.toPx()
+    val rawY = when {
+        cy - gapAbove - boxH < topMargin -> cy + gapAbove          // debajo del punto
+        else                             -> cy - gapAbove - boxH   // encima del punto
+    }.coerceAtLeast(topMargin)
+    val labelY = rawY + padV + textH
+
+    val rawX = if (cx + gapSide + textW + padH * 2 <= size.width) cx + gapSide
+               else (cx - gapSide - textW - padH * 2).coerceAtLeast(0f)
+    val labelX = rawX + padH
+
+    val rect = android.graphics.RectF(rawX, rawY, rawX + textW + padH * 2, rawY + textH + padV * 2)
+
+    val bgPaint = android.graphics.Paint().apply {
+        color       = android.graphics.Color.argb(190, 245, 244, 238)
+        isAntiAlias = true
+        style       = android.graphics.Paint.Style.FILL
     }
-    drawContext.canvas.nativeCanvas.drawText(label, labelX, cy + paint.textSize / 3f, paint)
+    drawContext.canvas.nativeCanvas.drawRoundRect(rect, radius, radius, bgPaint)
+
+    val borderPaint = android.graphics.Paint().apply {
+        color       = android.graphics.Color.argb(60, 100, 100, 90)
+        isAntiAlias = true
+        style       = android.graphics.Paint.Style.STROKE
+        strokeWidth = 1.dp.toPx()
+    }
+    drawContext.canvas.nativeCanvas.drawRoundRect(rect, radius, radius, borderPaint)
+    drawContext.canvas.nativeCanvas.drawText(label, labelX, labelY, textPaint)
 }
 
 private fun DrawScope.drawDashedHLine(

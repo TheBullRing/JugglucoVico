@@ -46,13 +46,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -67,6 +70,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
@@ -75,9 +79,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tk.glucodata.Natives
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public entry-point
@@ -184,30 +190,49 @@ fun GlucoseChartScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Botón de menú con popup flotante de 3 opciones
+// Top App Bar — fuera del gráfico, espacio propio de navegación global
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Botón circular ⌄ que al pulsarse abre el menú principal (VicoMenuSheet).
+ * Barra superior minimalista con el botón de menú global a la derecha.
+ * Vive FUERA de la Card del gráfico para que sea visualmente un control de app,
+ * no un control contextual del dato de glucosa.
+ * Altura fija de 44 dp — compacta para ceder el máximo espacio al gráfico.
  */
 @Composable
-private fun MenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = "Abrir menú" },
-        contentAlignment = Alignment.Center,
+private fun ChartTopBar(onMenuClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .padding(horizontal = 12.dp),
+        verticalAlignment    = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        // Título a la izquierda — color explícito para que sea visible en el tema beige de Juggluco
         Text(
-            text       = "☰",
+            text       = "Juggluco",
             style      = MaterialTheme.typography.titleMedium,
             color      = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Bold,
         )
+        // Botón menú a la derecha
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                .clickable(onClick = onMenuClick)
+                .semantics { contentDescription = "Abrir menú principal" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text       = "☰",
+                style      = MaterialTheme.typography.bodyLarge,
+                color      = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold,
+            )
+        }
     }
 }
 
@@ -216,8 +241,8 @@ private fun MenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Landscape: chart Canvas (X=tiempo, Y=glucosa) a la izquierda + panel de stats a la derecha.
- * Comparte el estado de ventana con PortraitLayout para que al rotar no se pierda la posición.
+ * Landscape: top bar + (chart a la izquierda | panel de stats a la derecha).
+ * La top bar vive fuera de ambos contenedores: el botón de menú es claramente global.
  */
 @Composable
 private fun LandscapeLayout(
@@ -229,39 +254,43 @@ private fun LandscapeLayout(
     windowMsState:  MutableFloatState,
     onMenuClick:    () -> Unit,
 ) {
-    Row(modifier = Modifier.fillMaxSize()) {
-        GlucoseLandscapeChart(
-            entries        = entries,
-            settings       = settings,
-            windowEndMs    = windowEndMs,
-            windowMs       = windowMs,
-            windowEndState = windowEndState,
-            windowMsState  = windowMsState,
-            modifier       = Modifier.weight(1f).fillMaxHeight(),
-        )
-        // Panel lateral landscape: 160dp — proporcional al panel inferior portrait
-        Column(modifier = Modifier.width(160.dp).fillMaxHeight()) {
-            StatsPanelWithDirection(
-                entries     = entries,
-                settings    = settings,
-                modifier    = Modifier.fillMaxWidth().weight(1f),
-                isLandscape = true,
-                onMenuClick = onMenuClick,
+    Column(modifier = Modifier.fillMaxSize()) {
+        // ── Top bar global ────────────────────────────────────────────────────
+        ChartTopBar(onMenuClick = onMenuClick)
+
+        // ── Contenido principal: gráfico + panel lateral ──────────────────────
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            GlucoseLandscapeChart(
+                entries        = entries,
+                settings       = settings,
+                windowEndMs    = windowEndMs,
+                windowMs       = windowMs,
+                windowEndState = windowEndState,
+                windowMsState  = windowMsState,
+                modifier       = Modifier.weight(1f).fillMaxHeight(),
             )
-            SensorExpiryOverlay(
-                settings    = settings,
-                entries     = entries,
-                windowEndMs = windowEndMs,
-                windowMs    = windowMs,
-            )
-        }
-    }
+            // Panel lateral landscape: 180dp
+            Column(modifier = Modifier.width(180.dp).fillMaxHeight()) {
+                StatsPanelWithDirection(
+                    entries     = entries,
+                    settings    = settings,
+                    modifier    = Modifier.fillMaxWidth().weight(1f),
+                    isLandscape = true,
+                )
+                SensorExpiryOverlay(
+                    settings    = settings,
+                    entries     = entries,
+                    windowEndMs = windowEndMs,
+                    windowMs    = windowMs,
+                )
+            }  // Column panel lateral
+        }  // Row contenido principal
+    }  // Column raíz LandscapeLayout
 }
 
 /**
- * Portrait: chart Canvas transpuesto (Y=tiempo, X=glucosa) arriba + panel de stats abajo.
- * El gráfico se envuelve en una Card con bordes redondeados para separarlo visualmente del fondo.
- * Comparte el estado de ventana con LandscapeLayout para que al rotar no se pierda la posición.
+ * Portrait: top bar + Card del gráfico + panel de stats.
+ * El botón de menú vive en la top bar, fuera del área de datos.
  */
 @Composable
 private fun PortraitLayout(
@@ -274,35 +303,50 @@ private fun PortraitLayout(
     onMenuClick:    () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Tarjeta con bordes redondeados que contiene el gráfico
+        // ── Top bar global ────────────────────────────────────────────────────
+        ChartTopBar(onMenuClick = onMenuClick)
+
+        // ── Gráfico en Card ───────────────────────────────────────────────────
         Card(
             modifier  = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             shape     = RoundedCornerShape(16.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             colors    = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
         ) {
-            GlucosePortraitChart(
-                entries        = entries,
-                settings       = settings,
-                windowEndMs    = windowEndMs,
-                windowMs       = windowMs,
-                windowEndState = windowEndState,
-                windowMsState  = windowMsState,
-                modifier       = Modifier.fillMaxSize(),
-            )
+            if (settings.portraitPivoted) {
+                GlucosePortraitChart(
+                    entries        = entries,
+                    settings       = settings,
+                    windowEndMs    = windowEndMs,
+                    windowMs       = windowMs,
+                    windowEndState = windowEndState,
+                    windowMsState  = windowMsState,
+                    modifier       = Modifier.fillMaxSize(),
+                )
+            } else {
+                GlucoseLandscapeChart(
+                    entries        = entries,
+                    settings       = settings,
+                    windowEndMs    = windowEndMs,
+                    windowMs       = windowMs,
+                    windowEndState = windowEndState,
+                    windowMsState  = windowMsState,
+                    modifier       = Modifier.fillMaxSize(),
+                )
+            }
         }
+
+        // ── Panel de estadísticas ─────────────────────────────────────────────
         StatsPanelWithDirection(
-            entries     = entries,
-            settings    = settings,
-            modifier    = Modifier.fillMaxWidth(),
-            onMenuClick = onMenuClick,
+            entries  = entries,
+            settings = settings,
+            modifier = Modifier.fillMaxWidth(),
         )
-        // Fecha fin de sensor — debajo del panel de stats, sin ocupar espacio fijo
         SensorExpiryOverlay(
             settings     = settings,
             entries      = entries,
@@ -318,11 +362,10 @@ private fun StatsPanelWithDirection(
     settings:    ChartSettings,
     modifier:    Modifier = Modifier,
     isLandscape: Boolean  = false,
-    onMenuClick: () -> Unit,
 ) {
     val direction = if (settings.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
-        StatsPanel(entries, settings, modifier, isLandscape, onMenuClick)
+        StatsPanel(entries, settings, modifier, isLandscape)
     }
 }
 
@@ -350,7 +393,6 @@ private fun StatsPanel(
     settings:    ChartSettings,
     modifier:    Modifier = Modifier,
     isLandscape: Boolean  = false,
-    onMenuClick: () -> Unit = {},
 ) {
     val latest   = entries.maxByOrNull { it.timestampMs }
     val previous = entries
@@ -373,16 +415,35 @@ private fun StatsPanel(
     //   > veryHigh             → rojo  (muy alto)
     val glucoseColor = when {
         latestDisplay == null                 -> MaterialTheme.colorScheme.onSurfaceVariant
-        latestDisplay < settings.veryLow      -> Color(0xFFE53935)
-        latestDisplay < settings.targetLow    -> Color(0xFFFFB300)
-        latestDisplay > settings.veryHigh     -> Color(0xFFE53935)
-        latestDisplay > settings.targetHigh   -> Color(0xFFFFB300)
-        else                                  -> Color(0xFF43A047)
+        latestDisplay < settings.veryLow      -> Color(0xFFE74C3C)
+        latestDisplay < settings.targetLow    -> Color(0xFFF39C12)
+        latestDisplay > settings.veryHigh     -> Color(0xFFE74C3C)
+        latestDisplay > settings.targetHigh   -> Color(0xFFF39C12)
+        else                                  -> Color(0xFF2ECC71)
     }
 
-    // Tendencia — flechas diagonales como en el diseño deseado
+    // ── Tasa de cambio nativa del sensor (TR) ────────────────────────────────
+    // Natives.lastglucose().rate contiene la tasa de cambio en mg/dL/min calculada
+    // por la capa C++ a partir del campo `ch` del sensor (rateOfChange del Libre 3).
+    // Es NaN cuando el dato no está disponible o el sensor está fuera de rango.
+    val sensorRate: Float? = try {
+        Natives.lastglucose()?.rate?.let { r -> if (r.isNaN()) null else r }
+    } catch (_: Exception) { null }
+
+    // Tendencia — preferir TR nativa; si no está disponible, calcular desde delta
     val (trendArrow, trendLabel) = when {
-        latest == null || previous == null -> Pair("→", "Estable")
+        latest == null -> Pair("→", "Estable")
+        sensorRate != null -> {
+            // rate está en mg/dL/min; Libre 3 lo reporta con resolución de ~0.1 mg/dL/min
+            when {
+                sensorRate >  2.0f -> Pair("↗↗", "Subiendo")
+                sensorRate >  1.0f -> Pair("↗",  "Subiendo")
+                sensorRate < -2.0f -> Pair("↙↙", "Bajando")
+                sensorRate < -1.0f -> Pair("↙",  "Bajando")
+                else               -> Pair("→",  "Estable")
+            }
+        }
+        previous == null -> Pair("→", "Estable")
         else -> {
             val delta = latest.valueMgdL - previous.valueMgdL
             when {
@@ -395,9 +456,9 @@ private fun StatsPanel(
         }
     }
     val trendColor = when (trendLabel) {
-        "Subiendo" -> Color(0xFFFF8F00)
+        "Subiendo" -> Color(0xFFF39C12)
         "Bajando"  -> Color(0xFF1E88E5)
-        else       -> Color(0xFF888888)
+        else       -> Color(0xFF8E8E93)
     }
 
     // Porcentajes TIR 24h
@@ -412,6 +473,135 @@ private fun StatsPanel(
         val below   = recent.count { toDisplayUnit(it.valueMgdL, settings.unit) < lo }
         Triple((inRange * 100) / recent.size, (above * 100) / recent.size, (below * 100) / recent.size)
     }
+
+    // ── Δ delta (diferencia desde la lectura anterior en mg/dL) ──────────────
+    val deltaDisplay = if (latest != null && previous != null) {
+        val d = toDisplayUnit(latest.valueMgdL, settings.unit) - toDisplayUnit(previous.valueMgdL, settings.unit)
+        val sign = if (d >= 0f) "+" else ""
+        if (settings.unit == GlucoseUnit.MMOL) "$sign${"%.1f".format(d)}" else "$sign${d.toInt()}"
+    } else null
+    val deltaColor = when {
+        deltaDisplay == null -> Color(0xFF8E8E93)
+        latest != null && previous != null -> {
+            val d = toDisplayUnit(latest.valueMgdL, settings.unit) - toDisplayUnit(previous.valueMgdL, settings.unit)
+            when {
+                kotlin.math.abs(d) > if (settings.unit == GlucoseUnit.MMOL) 1.1f else 20f -> Color(0xFFE74C3C)
+                kotlin.math.abs(d) > if (settings.unit == GlucoseUnit.MMOL) 0.6f else 10f -> Color(0xFFF39C12)
+                else -> Color(0xFF8E8E93)
+            }
+        }
+        else -> Color(0xFF8E8E93)
+    }
+
+    // ── Age of data ───────────────────────────────────────────────────────────
+    val ageStr = if (latest == null) null else {
+        val ageMin = ((now - latest.timestampMs) / 60_000L).toInt()
+        when {
+            ageMin < 1  -> "ahora"
+            ageMin < 60 -> "hace ${ageMin}m"
+            else        -> "hace ${"%.0f".format(ageMin / 60f)}h"
+        }
+    }
+    val ageColor = if (latest == null) Color(0xFF8E8E93) else {
+        val ageMin = ((now - latest.timestampMs) / 60_000L).toInt()
+        when {
+            ageMin > 15 -> Color(0xFFE74C3C)   // sin datos > 15min: rojo
+            ageMin > 7  -> Color(0xFFF39C12)   // datos algo antiguos: naranja
+            else        -> Color(0xFF8E8E93)   // reciente: gris neutro
+        }
+    }
+
+    // ── GMI y CV% ────────────────────────────────────────────────────────────
+    // GMI (Glucose Management Indicator) es una estimación del HbA1c a partir de la
+    // glucosa media. La fórmula ADA 2018 requiere al menos 14 días de datos continuos
+    // para ser estadísticamente válida; con menos tiempo el valor es engañoso.
+    //
+    // Condición para mostrar GMI: el span temporal de los datos disponibles (no solo
+    // las últimas 24h, sino todos los entries) debe cubrir ≥14 días.
+    // CV% sí puede calcularse con los datos de las últimas 24h (mínimo 20 lecturas).
+    val allEntriesSpanDays = if (entries.size >= 2) {
+        val spanMs = entries.maxOf { it.timestampMs } - entries.minOf { it.timestampMs }
+        spanMs / (24L * 3_600_000L).toFloat()
+    } else 0f
+    val gmiDataSufficient = allEntriesSpanDays >= 14f && recent.size >= 20
+
+    val (gmiVal, cvStr) = if (recent.size >= 20) {
+        val meanMgdl = recent.map { it.valueMgdL }.average().toFloat()
+        // GMI solo si hay ≥14 días de historial total
+        val gmi = if (gmiDataSufficient) 3.31f + 0.02392f * meanMgdl else null  // fórmula ADA 2018
+        val sd  = kotlin.math.sqrt(recent.map { (it.valueMgdL - meanMgdl) * (it.valueMgdL - meanMgdl) }
+                      .average()).toFloat()
+        val cv  = if (meanMgdl > 0f) (sd / meanMgdl) * 100f else 0f
+        val cvFmt = "%.0f%%".format(cv)
+        Pair(gmi, cvFmt)
+    } else Pair(null, null)
+    // Formato y color del GMI según semáforo clínico ADA
+    val gmiStr   = gmiVal?.let { "%.1f%%".format(it) }
+    val gmiColor = when {
+        gmiVal == null     -> Color(0xFF8E8E93)
+        gmiVal < 7.0f      -> Color(0xFF2ECC71)   // ✅ Control óptimo
+        gmiVal <= 7.5f     -> Color(0xFFF39C12)   // ⚠️ Aceptable / precaución
+        else               -> Color(0xFFE74C3C)   // ❌ Elevado fuera de meta
+    }
+    // Días que faltan para alcanzar los 14 necesarios (para el tooltip educativo)
+    val daysUntilGmi = if (gmiDataSufficient) 0 else (14f - allEntriesSpanDays).coerceAtLeast(0f).let { kotlin.math.ceil(it.toDouble()).toInt() }
+    val cvColor = when {
+        cvStr == null -> Color(0xFF8E8E93)
+        recent.size >= 20 -> {
+            val meanMgdl = recent.map { it.valueMgdL }.average().toFloat()
+            val sd = kotlin.math.sqrt(recent.map { (it.valueMgdL - meanMgdl) * (it.valueMgdL - meanMgdl) }.average()).toFloat()
+            val cv = if (meanMgdl > 0f) (sd / meanMgdl) * 100f else 0f
+            when { cv > 36f -> Color(0xFFE74C3C); cv > 28f -> Color(0xFFF39C12); else -> Color(0xFF2ECC71) }
+        }
+        else -> Color(0xFF8E8E93)
+    }
+
+    // ── Predicción 20 min ────────────────────────────────────────────────────
+    // Estrategia de slope (en mg/dL/min):
+    //   1. TR nativa del sensor si está disponible y no es NaN.
+    //   2. Pendiente lineal sobre ventana de 20 minutos como fallback.
+    // Amortiguación: si glucosa > 200 mg/dL y el Δ instantáneo cambia de signo
+    // respecto al slope calculado (pico prandial en reversión), se aplica un
+    // factor 0.5 para evitar proyecciones disparadas fuera del rango clínico.
+    fun computeSlope(): Float? {
+        val raw: Float? = if (sensorRate != null) {
+            sensorRate
+        } else {
+            val l = latest ?: return null
+            val windowStart20 = l.timestampMs - 20L * 60_000L
+            val pts = entries
+                .filter { it.sensorIndex == l.sensorIndex && it.timestampMs >= windowStart20 }
+                .sortedBy { it.timestampMs }
+            if (pts.size >= 2) {
+                val dtMin = (pts.last().timestampMs - pts.first().timestampMs) / 60_000f
+                if (dtMin > 0f) (pts.last().valueMgdL - pts.first().valueMgdL) / dtMin else null
+            } else null
+        }
+        if (raw == null || latest == null) return null
+        // Δ instantáneo = diferencia entre la última y la penúltima lectura
+        val instantDelta = if (previous != null) latest.valueMgdL - previous.valueMgdL else 0f
+        // Amortiguación: glucosa elevada + cambio de signo entre slope y Δ instantáneo
+        return if (latest.valueMgdL > 200f && raw * instantDelta < 0f) raw * 0.5f else raw
+    }
+
+    val predSlope = if (latest != null && now - latest.timestampMs <= 10L * 60_000L) computeSlope() else null
+
+    val predValueDisplay: String? = predSlope?.let { slope ->
+        val pred = toDisplayUnit((latest!!.valueMgdL + slope * 20f).coerceIn(20f, 400f), settings.unit)
+        val arrow = when { slope > 1.0f -> " ↗"; slope < -1.0f -> " ↘"; else -> " →" }
+        if (settings.unit == GlucoseUnit.MMOL) "%.1f$arrow".format(pred) else "${pred.toInt()}$arrow"
+    }
+
+    val predColor2 = predSlope?.let { slope ->
+        val pred = toDisplayUnit((latest!!.valueMgdL + slope * 20f).coerceIn(20f, 400f), settings.unit)
+        when {
+            pred < settings.veryLow    -> Color(0xFFE74C3C)
+            pred < settings.targetLow  -> Color(0xFFF39C12)
+            pred > settings.veryHigh   -> Color(0xFFE74C3C)
+            pred > settings.targetHigh -> Color(0xFFF39C12)
+            else                       -> Color(0xFF2ECC71)
+        }
+    } ?: Color(0xFF8E8E93)
 
     val lowLabel  = if (settings.unit == GlucoseUnit.MMOL) "< %.1f".format(settings.targetLow)  else "< ${settings.targetLow.toInt()}"
     val highLabel = if (settings.unit == GlucoseUnit.MMOL) "> %.1f".format(settings.targetHigh) else "> ${settings.targetHigh.toInt()}"
@@ -449,44 +639,68 @@ private fun StatsPanel(
         }
 
         if (isLandscape) {
-            // ── Landscape (panel lateral 200dp): stats en columna vertical ──────
-            StatColumn("$tirPct%", Color(0xFF43A047), "TIR 24h",  "• En rango",   Color(0xFF43A047), Modifier.fillMaxWidth())
-            StatHDivider()
-            StatColumn("$highPct%", Color(0xFFFF8F00), "Alto",    "• $highLabel", Color(0xFFFF8F00), Modifier.fillMaxWidth())
-            StatHDivider()
-            StatColumn("$lowPct%", Color(0xFFE53935),  "Bajo",    "• $lowLabel",  Color(0xFFE53935), Modifier.fillMaxWidth())
-            StatHDivider()
-            // Tendencia en fila compacta — muestra el valor dinámico ("Estable", "Subiendo", "Bajando")
+            // ── Landscape: valor actual + tendencia ──────────────────────────────
             Row(
-                modifier          = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                modifier          = Modifier.fillMaxWidth().padding(bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(trendColor.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(trendArrow, style = MaterialTheme.typography.titleSmall, color = trendColor, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(trendLabel, style = MaterialTheme.typography.bodySmall, color = trendColor, fontWeight = FontWeight.SemiBold)
+                if (ageStr != null)
+                    Text(ageStr, style = MaterialTheme.typography.labelSmall, color = ageColor)
+                Spacer(Modifier.weight(1f))
+                if (deltaDisplay != null)
+                    Text(deltaDisplay, style = MaterialTheme.typography.labelMedium,
+                        color = deltaColor, fontWeight = FontWeight.SemiBold)
             }
+            Spacer(Modifier.height(6.dp))
+
+            // ── Fila 1: TIR / Alto / Bajo como TirChips ──────────────────────────
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TirChip(value = "$tirPct%",  label = "TIR",            color = Color(0xFF2ECC71), modifier = Modifier.weight(1f))
+                TirChip(value = "$highPct%", label = "Alto $highLabel", color = Color(0xFFF39C12), modifier = Modifier.weight(1f))
+                TirChip(value = "$lowPct%",  label = "Bajo $lowLabel",  color = Color(0xFFE74C3C), modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(4.dp))
+
+            // ── Fila 2: GMI / CV% / Pred 20min ───────────────────────────────────
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (gmiStr != null)
+                    TirChip(value = gmiStr, label = "GMI", color = gmiColor, modifier = Modifier.weight(1f))
+                else
+                    GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
+
+                if (cvStr != null)
+                    TirChip(value = cvStr, label = "CV%", color = cvColor, modifier = Modifier.weight(1f))
+                else
+                    Spacer(Modifier.weight(1f))
+
+                if (predValueDisplay != null)
+                    TirChip(value = predValueDisplay, label = "~20min", color = predColor2, modifier = Modifier.weight(1f))
+                else
+                    Spacer(Modifier.weight(1f))
+            }
+
         } else {
             // ── Portrait (panel inferior, ancho completo) ──────────────────────
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
 
-            // Fila 1: valor de glucosa dominante + badge tendencia + botón menú
+            // Fila 1: valor de glucosa dominante + delta + badge tendencia + botón menú
             Row(
                 modifier          = Modifier.fillMaxWidth().padding(top = 10.dp, start = 16.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Número grande — lo más importante de la pantalla
                 Text(
                     text       = displayValue,
                     style      = MaterialTheme.typography.displayMedium,
                     color      = glucoseColor,
                     fontWeight = FontWeight.ExtraBold,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(4.dp))
                 Column(verticalArrangement = Arrangement.Bottom) {
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -495,8 +709,17 @@ private fun StatsPanel(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.width(10.dp))
-                // Badge de tendencia: texto + fondo coloreado pill
+                // Δ delta compacto junto al valor
+                if (deltaDisplay != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text       = deltaDisplay,
+                        style      = MaterialTheme.typography.labelLarge,
+                        color      = deltaColor,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = trendColor.copy(alpha = 0.13f),
@@ -521,46 +744,49 @@ private fun StatsPanel(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                // Botón menú — limpio, sin borde
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                        .clickable(onClick = onMenuClick),
-                    contentAlignment = Alignment.Center,
-                ) {
+                // Age of data al extremo derecho (el botón hamburguesa se ha movido al gráfico)
+                if (ageStr != null) {
                     Text(
-                        text  = "☰",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text  = ageStr,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ageColor,
                     )
                 }
             }
 
-            // Fila 2: chips TIR / Alto / Bajo con fondo real
+            // Fila 2: chips TIR / Alto / Bajo
             Row(
-                modifier              = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                modifier              = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TirChip(
-                    value    = "$tirPct%",
-                    label    = "TIR",
-                    color    = Color(0xFF43A047),
-                    modifier = Modifier.weight(1f),
-                )
-                TirChip(
-                    value    = "$highPct%",
-                    label    = "Alto  $highLabel",
-                    color    = Color(0xFFFFB300),
-                    modifier = Modifier.weight(1f),
-                )
-                TirChip(
-                    value    = "$lowPct%",
-                    label    = "Bajo  $lowLabel",
-                    color    = Color(0xFFE53935),   // rojo: estándar clínico (Consenso Ámsterdam)
-                    modifier = Modifier.weight(1f),
-                )
+                TirChip(value = "$tirPct%", label = "TIR",           color = Color(0xFF2ECC71), modifier = Modifier.weight(1f))
+                TirChip(value = "$highPct%",label = "Alto $highLabel",color = Color(0xFFF39C12), modifier = Modifier.weight(1f))
+                TirChip(value = "$lowPct%", label = "Bajo $lowLabel", color = Color(0xFFE74C3C), modifier = Modifier.weight(1f))
+            }
+
+            // Fila 3: GMI (solo ≥14 días) + CV% + Pred.20min
+            // Se muestra la fila si al menos hay CV% disponible o predicción
+            if (cvStr != null || predValueDisplay != null) {
+                Row(
+                    modifier              = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // GMI: semáforo de color si disponible; N/A deshabilitado con tooltip si no
+                    if (gmiStr != null)
+                        TirChip(value = gmiStr, label = "GMI (HbA1c est.)", color = gmiColor, modifier = Modifier.weight(1f))
+                    else
+                        GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
+
+                    if (cvStr != null)
+                        TirChip(value = cvStr,  label = "CV% variabilidad", color = cvColor, modifier = Modifier.weight(1f))
+                    else
+                        Spacer(Modifier.weight(1f))
+
+                    if (predValueDisplay != null)
+                        TirChip(value = predValueDisplay, label = "Pred. 20min", color = predColor2, modifier = Modifier.weight(1f))
+                    else
+                        Spacer(Modifier.weight(1f))
+                }
             }
 
         }
@@ -686,6 +912,66 @@ private fun TirChip(
                 fontWeight = FontWeight.Medium,
             )
         }
+    }
+}
+
+/**
+ * Chip "N/A" para GMI cuando no hay ≥14 días de historial.
+ * Apariencia deshabilitada (50% opacidad) + dialog educativo al pulsar.
+ */
+@Composable
+private fun GmiNaChip(daysRemaining: Int, modifier: Modifier = Modifier) {
+    var showDialog by remember { mutableStateOf(false) }
+    val grayColor = Color(0xFF8E8E93)
+
+    // Fondo con borde punteado y relleno a rayas para comunicar "disabled/pendiente"
+    // El alpha(0.50f) se aplica al contenido completo, no al Surface, para mantener
+    // el borde visible pero con toda la superficie desvanecida uniformemente.
+    Surface(
+        modifier = modifier.clickable { showDialog = true },
+        shape    = RoundedCornerShape(12.dp),
+        color    = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border   = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = grayColor.copy(alpha = 0.35f),
+        ),
+    ) {
+        Column(
+            modifier            = Modifier
+                .alpha(0.55f)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text       = "N/A",
+                style      = MaterialTheme.typography.titleLarge,
+                color      = grayColor,
+                fontWeight = FontWeight.Bold,
+                textAlign  = TextAlign.Center,
+            )
+            Text(
+                text      = "GMI (<14 días)",
+                style     = MaterialTheme.typography.labelSmall,
+                color     = grayColor,
+                fontWeight = FontWeight.Medium,
+                textAlign  = TextAlign.Center,
+            )
+        }
+    }
+
+    if (showDialog) {
+        val msg = if (daysRemaining > 0)
+            "Se necesitan al menos 14 días de datos continuos del sensor para calcular una estimación fiable de la HbA1c (GMI).\n\nTe faltan aproximadamente $daysRemaining día${if (daysRemaining != 1) "s" else ""}."
+        else
+            "Se necesitan al menos 14 días de datos continuos del sensor para calcular una estimación fiable de la HbA1c (GMI)."
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title            = { Text("GMI — Datos insuficientes") },
+            text             = { Text(msg) },
+            confirmButton    = {
+                TextButton(onClick = { showDialog = false }) { Text("Entendido") }
+            },
+        )
     }
 }
 

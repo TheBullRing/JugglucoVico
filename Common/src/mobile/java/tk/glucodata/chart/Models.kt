@@ -68,4 +68,10 @@ data class ChartSettings(
     val isRtl: Boolean,
     /** Timestamp UTC en ms de cuándo expira el sensor activo. 0 si no hay sensor. */
     val sensorEndsMs: Long = 0L,
+    /**
+     * true  → portrait usa el gráfico pivotado (eje Y = tiempo, eje X = glucosa) — comportamiento original.
+     * false → portrait usa el gráfico tradicional (eje X = tiempo, eje Y = glucosa), igual que landscape.
+     * Persiste en SharedPreferences con clave "portraitPivoted".
+     */
+    val portraitPivoted: Boolean = true,
 )

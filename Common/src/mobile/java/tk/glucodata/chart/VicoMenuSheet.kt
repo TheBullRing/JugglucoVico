@@ -92,6 +92,8 @@ data class VicoMenuActions(
     val onDarkModeChange:        (Boolean) -> Unit,
     val glucoseFloat:            Boolean,
     val onGlucoseFloatChange:    (Boolean) -> Unit,
+    val portraitPivoted:         Boolean,
+    val onPortraitPivotedChange: (Boolean) -> Unit,
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,6 +274,8 @@ private fun VerTab(a: VicoMenuActions, darkModeState: Boolean, onDismiss: () -> 
 
     // Calcular el nuevo valor antes de asignarlo para que el callback reciba
     // siempre el valor correcto, independientemente del scheduler de Compose.
+    var portraitPivoted by remember(a.portraitPivoted) { mutableStateOf(a.portraitPivoted) }
+
     Column {
         SectionLabel("General")
         Row(Modifier.fillMaxWidth()) {
@@ -280,6 +284,19 @@ private fun VerTab(a: VicoMenuActions, darkModeState: Boolean, onDismiss: () -> 
         }
         Row(Modifier.fillMaxWidth()) {
             ToggleButton("Glucosa flotante", glucoseFloat, Modifier.weight(1f)) { val n = !glucoseFloat; glucoseFloat = n;    a.onGlucoseFloatChange(n) }
+            Spacer(Modifier.weight(1f))
+        }
+        SectionLabel("Gráfico portrait")
+        Row(Modifier.fillMaxWidth()) {
+            ToggleButton(
+                label    = if (portraitPivoted) "Pivotado (Y=tiempo)" else "Tradicional (X=tiempo)",
+                active   = true,   // siempre activo — es una selección, no on/off
+                modifier = Modifier.weight(1f),
+            ) {
+                val n = !portraitPivoted
+                portraitPivoted = n
+                a.onPortraitPivotedChange(n)
+            }
             Spacer(Modifier.weight(1f))
         }
         SectionLabel("Datos visibles")
