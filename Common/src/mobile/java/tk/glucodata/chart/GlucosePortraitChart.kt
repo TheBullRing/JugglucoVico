@@ -62,7 +62,7 @@ import kotlin.math.min
 private val COLOR_IN_RANGE    = Color(0xFF2ECC71)   // verde accesible: en rango
 private val COLOR_WARNING     = Color(0xFFF39C12)   // naranja accesible: zona intermedia
 private val COLOR_CRITICAL    = Color(0xFFE74C3C)   // rojo accesible: fuera de rango extremo
-private val COLOR_TARGET_BAND = Color(0x0D2ECC71)   // franja objetivo ~5% alpha
+private val COLOR_TARGET_BAND = Color(0x1E2ECC71)   // franja objetivo ~12% alpha
 private val COLOR_GRID        = Color(0x1A8E8E93)   // cuadrícula 10% alpha neutro
 private val COLOR_AXIS_TEXT   = Color(0xFF8E8E93)   // texto ejes: gris neutro iOS/Material
 private val COLOR_AXIS_TICK   = Color(0xFFBBBBBB)

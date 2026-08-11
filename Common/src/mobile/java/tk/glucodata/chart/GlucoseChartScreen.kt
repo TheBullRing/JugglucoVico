@@ -190,47 +190,44 @@ fun GlucoseChartScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Top App Bar — fuera del gráfico, espacio propio de navegación global
+// Top App Bar — Material 3 estándar, sin fondo destacado en el icono de menú
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Barra superior minimalista con el botón de menú global a la derecha.
- * Vive FUERA de la Card del gráfico para que sea visualmente un control de app,
- * no un control contextual del dato de glucosa.
- * Altura fija de 44 dp — compacta para ceder el máximo espacio al gráfico.
+ * Barra superior Material 3 estándar.
+ * - Título a la izquierda con tipografía titleSmall (compacta, no domina).
+ * - Icono ☰ a la derecha sin fondo de card — solo zona táctil con ripple implícito.
+ * Altura fija de 40 dp para ceder el máximo espacio al gráfico y los datos.
  */
 @Composable
 private fun ChartTopBar(onMenuClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .padding(horizontal = 12.dp),
-        verticalAlignment    = Alignment.CenterVertically,
+            .height(40.dp)
+            .padding(horizontal = 16.dp),
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Título a la izquierda — color explícito para que sea visible en el tema beige de Juggluco
+        // Título a la izquierda — titleSmall para no competir con el valor de glucosa
         Text(
             text       = "Juggluco",
-            style      = MaterialTheme.typography.titleMedium,
+            style      = MaterialTheme.typography.titleSmall,
             color      = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
         )
-        // Botón menú a la derecha
+        // Icono de menú sin fondo: zona táctil de 40×40 dp con padding interior
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                .size(40.dp)
                 .clickable(onClick = onMenuClick)
                 .semantics { contentDescription = "Abrir menú principal" },
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text       = "☰",
-                style      = MaterialTheme.typography.bodyLarge,
-                color      = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Bold,
+                text  = "☰",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -664,7 +661,7 @@ private fun StatsPanel(
             }
             Spacer(Modifier.height(4.dp))
 
-            // ── Fila 2: GMI / CV% / Pred 20min ───────────────────────────────────
+            // ── Fila 2: GMI / CV% (métricas primarias) ───────────────────────────
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -678,11 +675,16 @@ private fun StatsPanel(
                     TirChip(value = cvStr, label = "CV%", color = cvColor, modifier = Modifier.weight(1f))
                 else
                     Spacer(Modifier.weight(1f))
-
-                if (predValueDisplay != null)
-                    TirChip(value = predValueDisplay, label = "~20min", color = predColor2, modifier = Modifier.weight(1f))
-                else
-                    Spacer(Modifier.weight(1f))
+            }
+            // ── Fila 3: Predicción 20min (métrica secundaria de apoyo) ────────────
+            if (predValueDisplay != null) {
+                Spacer(Modifier.height(4.dp))
+                SecondaryChip(
+                    value    = predValueDisplay,
+                    label    = "Predicción ~20min",
+                    color    = predColor2,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
         } else {
@@ -764,29 +766,34 @@ private fun StatsPanel(
                 TirChip(value = "$lowPct%", label = "Bajo $lowLabel", color = Color(0xFFE74C3C), modifier = Modifier.weight(1f))
             }
 
-            // Fila 3: GMI (solo ≥14 días) + CV% + Pred.20min
-            // Se muestra la fila si al menos hay CV% disponible o predicción
-            if (cvStr != null || predValueDisplay != null) {
+            // Fila 3: GMI (solo ≥14 días) + CV% (métricas primarias)
+            if (cvStr != null || gmiStr != null) {
                 Row(
-                    modifier              = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 6.dp),
+                    modifier              = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // GMI: semáforo de color si disponible; N/A deshabilitado con tooltip si no
+                    // GMI: semáforo de color si disponible; chip "datos insuficientes" si inminente
                     if (gmiStr != null)
                         TirChip(value = gmiStr, label = "GMI (HbA1c est.)", color = gmiColor, modifier = Modifier.weight(1f))
                     else
                         GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
 
                     if (cvStr != null)
-                        TirChip(value = cvStr,  label = "CV% variabilidad", color = cvColor, modifier = Modifier.weight(1f))
-                    else
-                        Spacer(Modifier.weight(1f))
-
-                    if (predValueDisplay != null)
-                        TirChip(value = predValueDisplay, label = "Pred. 20min", color = predColor2, modifier = Modifier.weight(1f))
+                        TirChip(value = cvStr, label = "CV% variabilidad", color = cvColor, modifier = Modifier.weight(1f))
                     else
                         Spacer(Modifier.weight(1f))
                 }
+            }
+            // Fila 4: Predicción 20min — métrica secundaria, visualmente más discreta
+            if (predValueDisplay != null) {
+                SecondaryChip(
+                    value    = predValueDisplay,
+                    label    = "Predicción ~20min",
+                    color    = predColor2,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 6.dp),
+                )
             }
 
         }
@@ -881,7 +888,10 @@ private fun StatColumn(
 }
 
 /**
- * Chip de estadística TIR/Alto/Bajo con fondo de Card y valor destacado.
+ * Chip de estadística primaria (TIR/Alto/Bajo/GMI/CV%).
+ *
+ * Material 3: fondo SurfaceContainer neutro, borde sutil de 1dp con el color de acento,
+ * el color solo aparece en el valor numérico — no satura todo el chip.
  */
 @Composable
 private fun TirChip(
@@ -893,7 +903,11 @@ private fun TirChip(
     Surface(
         modifier = modifier,
         shape    = RoundedCornerShape(12.dp),
-        color    = color.copy(alpha = 0.10f),
+        color    = MaterialTheme.colorScheme.surfaceContainer,
+        border   = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = color.copy(alpha = 0.30f),
+        ),
     ) {
         Column(
             modifier            = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -908,7 +922,7 @@ private fun TirChip(
             Text(
                 text  = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = color.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium,
             )
         }
@@ -916,41 +930,82 @@ private fun TirChip(
 }
 
 /**
- * Chip "N/A" para GMI cuando no hay ≥14 días de historial.
- * Apariencia deshabilitada (50% opacidad) + dialog educativo al pulsar.
+ * Chip secundario para métricas de apoyo (predicción 20min).
+ * Más compacto y menos prominente que TirChip — solo fondo neutro sin borde de color.
+ */
+@Composable
+private fun SecondaryChip(
+    value:    String,
+    label:    String,
+    color:    Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape    = RoundedCornerShape(10.dp),
+        color    = MaterialTheme.colorScheme.surfaceContainerLow,
+        border   = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        ),
+    ) {
+        Column(
+            modifier            = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text       = value,
+                style      = MaterialTheme.typography.titleMedium,
+                color      = color,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text  = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+            )
+        }
+    }
+}
+
+/**
+ * Chip "datos insuficientes" para GMI cuando no hay ≥14 días de historial.
+ * Se muestra solo al pulsar — el chip está oculto si faltan más de 3 días;
+ * si faltan ≤3 días (inminente) se muestra para avisar al usuario.
+ * Cuando hay datos suficientes se muestra directamente el valor de GMI.
  */
 @Composable
 private fun GmiNaChip(daysRemaining: Int, modifier: Modifier = Modifier) {
-    var showDialog by remember { mutableStateOf(false) }
-    val grayColor = Color(0xFF8E8E93)
+    // Ocultar completamente cuando faltan más de 3 días — reduce ruido visual
+    if (daysRemaining > 3) return
 
-    // Fondo con borde punteado y relleno a rayas para comunicar "disabled/pendiente"
-    // El alpha(0.50f) se aplica al contenido completo, no al Surface, para mantener
-    // el borde visible pero con toda la superficie desvanecida uniformemente.
+    var showDialog by remember { mutableStateOf(false) }
+    val grayColor = MaterialTheme.colorScheme.onSurfaceVariant
+
     Surface(
         modifier = modifier.clickable { showDialog = true },
         shape    = RoundedCornerShape(12.dp),
-        color    = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        color    = MaterialTheme.colorScheme.surfaceContainer,
         border   = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = grayColor.copy(alpha = 0.35f),
+            color = MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
         Column(
             modifier            = Modifier
-                .alpha(0.55f)
+                .alpha(0.60f)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text       = "N/A",
+                text       = "GMI",
                 style      = MaterialTheme.typography.titleLarge,
                 color      = grayColor,
                 fontWeight = FontWeight.Bold,
                 textAlign  = TextAlign.Center,
             )
             Text(
-                text      = "GMI (<14 días)",
+                text      = "Datos insuficientes",
                 style     = MaterialTheme.typography.labelSmall,
                 color     = grayColor,
                 fontWeight = FontWeight.Medium,
@@ -1056,52 +1111,103 @@ private fun buildJugglucoColorScheme(themeColors: IntArray, darkTheme: Boolean):
     // invirtiendo la luminosidad del fondo: el chart canvas y el panel de stats
     // mostrarán el color de fondo oscuro en lugar del beige/claro del tema.
     val (bgFinal, onSurfaceFinal) = if (darkTheme) {
-        // Invertir la luminosidad: acercamos el fondo a negro y el texto a blanco
-        val invertedBg = Color(
-            red   = (1f - background.red)   * 0.85f,
-            green = (1f - background.green) * 0.85f,
-            blue  = (1f - background.blue)  * 0.85f,
-            alpha = 1f,
-        )
+        // Usar Surface M3 oscura real (~#1C1B1F) en lugar de negro puro para seguir
+        // las recomendaciones Material 3 de tema oscuro. La inversión cromática solo se
+        // aplica si el fondo original es muy claro (luminosidad > 0.8), para que temas
+        // ya oscuros (ej. TarNight) no se inviertan a blanco.
+        val lum = background.red * 0.2126f + background.green * 0.7152f + background.blue * 0.0722f
+        val darkBg = if (lum > 0.8f) {
+            // Fondo claro → derivar un Surface oscuro real (~#1C1B1F) con tinte del color primario
+            Color(
+                red   = 0.11f + (1f - background.red)   * 0.035f,
+                green = 0.11f + (1f - background.green) * 0.035f,
+                blue  = 0.12f + (1f - background.blue)  * 0.035f,
+                alpha = 1f,
+            )
+        } else {
+            // Fondo ya oscuro → usarlo directamente sin inversión
+            background
+        }
         val invertedOnSurface = Color(
             red   = (1f - onSurface.red).coerceIn(0.75f, 1f),
             green = (1f - onSurface.green).coerceIn(0.75f, 1f),
             blue  = (1f - onSurface.blue).coerceIn(0.75f, 1f),
             alpha = 1f,
         )
-        Pair(invertedBg, invertedOnSurface)
+        Pair(darkBg, invertedOnSurface)
     } else {
         Pair(background, onSurface)
+    }
+
+    // SurfaceContainer: ligeramente más oscuro/claro que Surface — para los chips de métricas.
+    // En tema claro: un poco más oscuro que el fondo (tinte del primario ~5%).
+    // En tema oscuro: un poco más claro que la Surface oscura (~#28262C) — evita negro puro.
+    val surfaceContainerFinal = if (darkTheme) {
+        Color(
+            red   = (bgFinal.red   + 0.06f).coerceAtMost(1f),
+            green = (bgFinal.green + 0.05f).coerceAtMost(1f),
+            blue  = (bgFinal.blue  + 0.06f).coerceAtMost(1f),
+            alpha = 1f,
+        )
+    } else {
+        Color(
+            red   = (bgFinal.red   - 0.04f).coerceAtLeast(0f),
+            green = (bgFinal.green - 0.04f).coerceAtLeast(0f),
+            blue  = (bgFinal.blue  - 0.04f).coerceAtLeast(0f),
+            alpha = 1f,
+        )
+    }
+    val surfaceContainerLowFinal = if (darkTheme) {
+        Color(
+            red   = (bgFinal.red   + 0.03f).coerceAtMost(1f),
+            green = (bgFinal.green + 0.025f).coerceAtMost(1f),
+            blue  = (bgFinal.blue  + 0.03f).coerceAtMost(1f),
+            alpha = 1f,
+        )
+    } else {
+        Color(
+            red   = (bgFinal.red   - 0.02f).coerceAtLeast(0f),
+            green = (bgFinal.green - 0.02f).coerceAtLeast(0f),
+            blue  = (bgFinal.blue  - 0.02f).coerceAtLeast(0f),
+            alpha = 1f,
+        )
     }
 
     val surface              = bgFinal
     val primaryContainer     = primary
     val onPrimaryContainer   = onPrimary
     val outline              = onSurfaceFinal.copy(alpha = 0.30f)
+    val outlineVariant       = onSurfaceFinal.copy(alpha = 0.15f)
 
     return if (darkTheme) {
         darkColorScheme(
-            primary            = primary,
-            onPrimary          = onPrimary,
-            primaryContainer   = primaryContainer,
-            onPrimaryContainer = onPrimaryContainer,
-            background         = bgFinal,
-            onBackground       = onSurfaceFinal,
-            surface            = surface,
-            onSurface          = onSurfaceFinal,
-            outline            = outline,
+            primary              = primary,
+            onPrimary            = onPrimary,
+            primaryContainer     = primaryContainer,
+            onPrimaryContainer   = onPrimaryContainer,
+            background           = bgFinal,
+            onBackground         = onSurfaceFinal,
+            surface              = surface,
+            onSurface            = onSurfaceFinal,
+            surfaceContainer     = surfaceContainerFinal,
+            surfaceContainerLow  = surfaceContainerLowFinal,
+            outline              = outline,
+            outlineVariant       = outlineVariant,
         )
     } else {
         lightColorScheme(
-            primary            = primary,
-            onPrimary          = onPrimary,
-            primaryContainer   = primaryContainer,
-            onPrimaryContainer = onPrimaryContainer,
-            background         = bgFinal,
-            onBackground       = onSurfaceFinal,
-            surface            = surface,
-            onSurface          = onSurfaceFinal,
-            outline            = outline,
+            primary              = primary,
+            onPrimary            = onPrimary,
+            primaryContainer     = primaryContainer,
+            onPrimaryContainer   = onPrimaryContainer,
+            background           = bgFinal,
+            onBackground         = onSurfaceFinal,
+            surface              = surface,
+            onSurface            = onSurfaceFinal,
+            surfaceContainer     = surfaceContainerFinal,
+            surfaceContainerLow  = surfaceContainerLowFinal,
+            outline              = outline,
+            outlineVariant       = outlineVariant,
         )
     }
 }

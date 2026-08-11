@@ -59,8 +59,8 @@ import kotlin.math.min
 private val LC_COLOR_IN_RANGE    = Color(0xFF2ECC71)   // verde accesible: en rango
 private val LC_COLOR_WARNING     = Color(0xFFF39C12)   // naranja accesible: zona intermedia
 private val LC_COLOR_CRITICAL    = Color(0xFFE74C3C)   // rojo accesible: fuera de rango extremo
-// Fondo: solo franja objetivo muy suave ~5% alpha
-private val LC_COLOR_TARGET_BAND = Color(0x0D2ECC71)   // verde ~5% alpha
+// Fondo: franja objetivo más visible ~12% alpha — suficiente para leerla sin saturar
+private val LC_COLOR_TARGET_BAND = Color(0x1E2ECC71)   // verde ~12% alpha
 // Grid 10–15% alpha neutro
 private val LC_COLOR_GRID        = Color(0x1A8E8E93)   // grid 10% alpha
 private val LC_COLOR_GRID_MAJOR  = Color(0x268E8E93)   // grid horas exactas 15% alpha
