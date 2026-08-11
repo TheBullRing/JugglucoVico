@@ -252,16 +252,52 @@ private void startdisplay() {
         curve = new GlucoseCurve(this);
         {if(doLog) {Log.i(LOG_ID,"Vico path: GlucoseCurve created (not shown)");}}
 
+        // Build the native Compose menu actions — all callbacks run on the UI thread.
+        final MainActivity act = this;
+        final GlucoseCurve curveRef = curve;
+        tk.glucodata.chart.VicoMenuActions menuActions = new tk.glucodata.chart.VicoMenuActions(
+            // ── Acciones ──────────────────────────────────────────────────────
+            () -> { if(!isWearable) { act.lightBars(!getInvertColors()); tk.glucodata.Watch.show(act); } },
+            () -> { act.lightBars(!getInvertColors()); tk.glucodata.bluediag.start(act); },
+            () -> tk.glucodata.settings.Settings.set(act),
+            () -> { if(curveRef != null) curveRef.doabout(act); },
+            () -> { if(curveRef != null) curveRef.dialogs.showexport(act, curveRef.getWidth(), curveRef.getHeight(), null); },
+            () -> new tk.glucodata.Backup().mkbackupview(act),
+            () -> act.moveTaskToBack(true),
+            // ── Datos ──────────────────────────────────────────────────────────
+            () -> { if(!Natives.staticnum()) { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.numberview.addnumberview(act); } } },
+            () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); Natives.makenumbers(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); curveRef.getnumcontrol(act); } },
+            () -> { if(Natives.makepercentages()) { act.lightBars(!getInvertColors()); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); tk.glucodata.Stats.mkstats(act); } },
+            () -> tk.glucodata.Talker.config(act),
+            () -> { if(Natives.showlastscan()) { act.lightBars(!getInvertColors()); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); } },
+            () -> { act.lightBars(!getInvertColors()); Natives.settonow(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
+            () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.startsearch(); } },
+            () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.startdatepick(Natives.getstarttime()); } },
+            () -> { act.lightBars(!getInvertColors()); Natives.prevday(1); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
+            () -> { act.lightBars(!getInvertColors()); Natives.nextday(1); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
+            () -> { act.lightBars(!getInvertColors()); Natives.prevday(7); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
+            () -> { act.lightBars(!getInvertColors()); Natives.nextday(7); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
+            // ── Ver — estado y callbacks ────────────────────────────────────────
+            Natives.getsystemui(),   checked -> { Natives.setsystemui(checked); act.selectionSystemUI(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowscans(),  checked -> { Natives.setshowscans(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getshowcalibratedscans(),  checked -> { Natives.setshowcalibratedscans(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getshowstream(), checked -> { Natives.setshowstream(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getshowcalibratedstream(), checked -> { Natives.setshowcalibratedstream(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getshowhistories(), checked -> { Natives.setshowhistories(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getshowcalibratedhistories(), checked -> { Natives.setshowcalibratedhistories(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getshownumbers(), checked -> { Natives.setshownumbers(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getshowmeals(),  checked -> { Natives.setshowmeals(checked); return kotlin.Unit.INSTANCE; },
+            getInvertColors(),       checked -> { Natives.setInvertColors(checked); return kotlin.Unit.INSTANCE; },
+            Natives.getfloatglucose(), checked -> { tk.glucodata.Floating.setfloatglucose(act, checked); return kotlin.Unit.INSTANCE; }
+        );
+
         android.view.View composeView = GlucoseChartViewBridgeKt.createGlucoseChartView(
                 this,
-                tabIndex -> {
-                    // Popup menu option tapped: open VicoMenus at the selected tab (0=Acciones/1=Datos/2=Ver).
-                    Applic.RunOnUiThread(() -> VicoMenus.show(MainActivity.this, tabIndex));
-                    return kotlin.Unit.INSTANCE;
-                },
+                menuActions,
+                tabIndex -> kotlin.Unit.INSTANCE, // unused — menu handled by VicoMenuSheet
                 entry -> {
                     // Long-press: open number-entry at the tapped data point.
-                    Applic.RunOnUiThread(() -> curve.numberview.addnumberview(MainActivity.this, entry.getTimestampMs()));
+                    Applic.RunOnUiThread(() -> curveRef.numberview.addnumberview(MainActivity.this, entry.getTimestampMs()));
                     return kotlin.Unit.INSTANCE;
                 }
         );
@@ -543,8 +579,11 @@ if(!isWearable) {
     int wanted;
     if(!largeScreen) {
          // Sentinel 127 (uint8_t:7 default) means "never been set" — treat as UNSPECIFIED.
+         // Also treat stored==0 (LANDSCAPE, the C++ field default) as UNSPECIFIED so that
+         // users who previously ran the old UI (which always wrote LANDSCAPE=0) can still
+         // rotate freely in the Vico path. The user can fix orientation via Settings.
          int stored = Natives.getScreenOrientation();
-         wanted = (stored == 127) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : stored;
+         wanted = (stored == 127 || stored == 0) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : stored;
          }
     else {
         if(!isElongated) {

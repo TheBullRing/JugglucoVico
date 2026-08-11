@@ -65,6 +65,7 @@ import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.MutableLongState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,23 +100,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  */
 @Composable
 fun GlucoseChartScreen(
-    viewModel: GlucoseChartViewModel,
-    onMenuTab: (Int) -> Unit = {},
+    viewModel:   GlucoseChartViewModel,
+    menuActions: VicoMenuActions? = null,
+    // onMenuTab kept for backwards-compat (ignored when menuActions != null)
+    onMenuTab:   (Int) -> Unit = {},
     onLongPress: (GlucoseEntry) -> Unit = {},
 ) {
     val entries  by viewModel.glucoseEntries.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
 
-    // ── Estado de ventana: objetos MutableState pasados POR REFERENCIA ────────
-    // Pasar los State<> directamente (no los valores extraídos) permite que los
-    // lambdas de gestos lean y escriban el valor actualizado en cada evento de
-    // touch, sin depender del ciclo de recomposición de Compose. Si pasáramos
-    // Long/Float por valor el lambda de pointerInput (que no se recrea en cada
-    // frame) vería siempre el valor capturado en la primera composición.
     val windowEndState = remember { mutableLongStateOf(0L) }
     val windowMsState  = remember { mutableFloatStateOf(8L * 3_600_000L.toFloat()) }
 
-    // Auto-inicializar sólo la primera vez (cuando windowEndMs == 0L).
     if (windowEndState.longValue == 0L) {
         windowEndState.longValue = if (entries.isNotEmpty())
             entries.maxOf { it.timestampMs } + 5L * 60L * 1000L
@@ -123,9 +119,12 @@ fun GlucoseChartScreen(
             System.currentTimeMillis()
     }
 
-    // Leer los valores actuales para pasarlos como datos de dibujo.
     val windowEndMs by windowEndState
     val windowMs    by windowMsState
+
+    // Estado del menú Compose (solo cuando menuActions está disponible)
+    var menuVisible    by remember { mutableStateOf(false) }
+    var menuInitialTab by remember { mutableIntStateOf(0) }
 
     GlucoseTheme(invertColors = settings.invertColors) {
         Surface(
@@ -139,31 +138,49 @@ fun GlucoseChartScreen(
                     val isLandscape = maxWidth > 600.dp
                     if (isLandscape) {
                         LandscapeLayout(
-                            entries          = entries,
-                            settings         = settings,
-                            windowEndMs      = windowEndMs,
-                            windowMs         = windowMs,
-                            windowEndState   = windowEndState,
-                            windowMsState    = windowMsState,
+                            entries        = entries,
+                            settings       = settings,
+                            windowEndMs    = windowEndMs,
+                            windowMs       = windowMs,
+                            windowEndState = windowEndState,
+                            windowMsState  = windowMsState,
                         )
                     } else {
                         PortraitLayout(
-                            entries          = entries,
-                            settings         = settings,
-                            windowEndMs      = windowEndMs,
-                            windowMs         = windowMs,
-                            windowEndState   = windowEndState,
-                            windowMsState    = windowMsState,
+                            entries        = entries,
+                            settings       = settings,
+                            windowEndMs    = windowEndMs,
+                            windowMs       = windowMs,
+                            windowEndState = windowEndState,
+                            windowMsState  = windowMsState,
                         )
                     }
                 }
-                // Botón de menú (∨) con popup de 3 opciones.
+
+                // Botón ⌄ — abre el menú Compose nativo si menuActions está
+                // disponible, o el viejo popup Java en caso contrario.
                 MenuPopupButton(
-                    onMenuTab = onMenuTab,
-                    modifier  = Modifier
+                    onMenuTab = { tab ->
+                        if (menuActions != null) {
+                            menuInitialTab = tab
+                            menuVisible    = true
+                        } else {
+                            onMenuTab(tab)
+                        }
+                    },
+                    modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp),
                 )
+
+                // Menú Compose nativo (superpuesto sobre el chart)
+                if (menuVisible && menuActions != null) {
+                    VicoMenuSheet(
+                        initialTab = menuInitialTab,
+                        actions    = menuActions,
+                        onDismiss  = { menuVisible = false },
+                    )
+                }
             }
         }
     }
