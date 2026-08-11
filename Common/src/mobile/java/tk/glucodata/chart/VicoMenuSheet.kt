@@ -305,14 +305,10 @@ private fun TwoColumnGrid(content: @Composable () -> Unit) {
 
 @Composable
 private fun MenuButton(label: String, onClick: () -> Unit) {
-    Button(
+    FilledTonalButton(
         onClick  = onClick,
         modifier = Modifier.fillMaxWidth().padding(4.dp),
         shape    = RoundedCornerShape(10.dp),
-        colors   = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor   = MaterialTheme.colorScheme.onSecondaryContainer,
-        ),
     ) {
         Text(label, maxLines = 2, style = MaterialTheme.typography.bodyMedium)
     }
