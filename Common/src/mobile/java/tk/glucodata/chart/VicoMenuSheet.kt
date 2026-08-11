@@ -105,14 +105,19 @@ data class VicoMenuActions(
  * Tres pestañas: Acciones / Datos / Ver.
  * Se descarta pulsando fuera del sheet o con el botón atrás del sistema.
  *
- * @param initialTab  0=Acciones, 1=Datos, 2=Ver.
- * @param actions     Acciones y estados del menú.
- * @param onDismiss   Llamado cuando el usuario cierra el menú.
+ * @param initialTab   0=Acciones, 1=Datos, 2=Ver.
+ * @param actions      Acciones y estados del menú.
+ * @param darkModeState Valor reactivo de "modo oscuro" leído directamente del StateFlow de
+ *                     settings (ChartSettings.invertColors). Se pasa por separado para evitar
+ *                     el problema de congelado que ocurre cuando se envuelve en remember().
+ *                     Si null, se usa el valor inicial de actions.darkMode.
+ * @param onDismiss    Llamado cuando el usuario cierra el menú.
  */
 @Composable
 fun VicoMenuSheet(
     initialTab: Int = 0,
     actions: VicoMenuActions,
+    darkModeState: Boolean = actions.darkMode,
     onDismiss: () -> Unit,
 ) {
     var selectedTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 2)) }
@@ -188,7 +193,7 @@ fun VicoMenuSheet(
                 when (selectedTab) {
                     0 -> AccionesTab(actions, onDismiss)
                     1 -> DatosTab(actions, onDismiss)
-                    2 -> VerTab(actions, onDismiss)
+                    2 -> VerTab(actions, darkModeState, onDismiss)
                 }
             }
         }
@@ -245,19 +250,25 @@ private fun DatosTab(a: VicoMenuActions, onDismiss: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun VerTab(a: VicoMenuActions, onDismiss: () -> Unit) {
+private fun VerTab(a: VicoMenuActions, darkModeState: Boolean, onDismiss: () -> Unit) {
     // Estado local para feedback inmediato; el callback persiste el cambio.
-    var systemUi          by remember { mutableStateOf(a.systemUi) }
-    var scans             by remember { mutableStateOf(a.scans) }
-    var calibratedScans   by remember { mutableStateOf(a.calibratedScans) }
-    var stream            by remember { mutableStateOf(a.stream) }
-    var calibratedStream  by remember { mutableStateOf(a.calibratedStream) }
-    var history           by remember { mutableStateOf(a.history) }
-    var calibratedHistory by remember { mutableStateOf(a.calibratedHistory) }
-    var amounts           by remember { mutableStateOf(a.amounts) }
-    var meals             by remember { mutableStateOf(a.meals) }
-    var darkMode          by remember { mutableStateOf(a.darkMode) }
-    var glucoseFloat      by remember { mutableStateOf(a.glucoseFloat) }
+    // Se usa a.xxx como key del remember para que si el valor externo cambia
+    // (p.ej. cuando se vuelve a abrir el menú con un estado distinto), el estado
+    // local se reinicie correctamente y el toggle refleje el valor actual.
+    var systemUi          by remember(a.systemUi)          { mutableStateOf(a.systemUi) }
+    var scans             by remember(a.scans)             { mutableStateOf(a.scans) }
+    var calibratedScans   by remember(a.calibratedScans)   { mutableStateOf(a.calibratedScans) }
+    var stream            by remember(a.stream)            { mutableStateOf(a.stream) }
+    var calibratedStream  by remember(a.calibratedStream)  { mutableStateOf(a.calibratedStream) }
+    var history           by remember(a.history)           { mutableStateOf(a.history) }
+    var calibratedHistory by remember(a.calibratedHistory) { mutableStateOf(a.calibratedHistory) }
+    var amounts           by remember(a.amounts)           { mutableStateOf(a.amounts) }
+    var meals             by remember(a.meals)             { mutableStateOf(a.meals) }
+    // darkMode: se inicializa con darkModeState (valor reactivo del StateFlow) y
+    // se usa darkModeState como key del remember para que se reinicie si el valor
+    // externo cambia (p.ej. al volver a abrir el menú tras cambiar el tema).
+    var darkMode          by remember(darkModeState)       { mutableStateOf(darkModeState) }
+    var glucoseFloat      by remember(a.glucoseFloat)      { mutableStateOf(a.glucoseFloat) }
 
     // Calcular el nuevo valor antes de asignarlo para que el callback reciba
     // siempre el valor correcto, independientemente del scheduler de Compose.

@@ -54,8 +54,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -71,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
@@ -101,19 +100,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun GlucoseChartScreen(
     viewModel:   GlucoseChartViewModel,
     menuActions: VicoMenuActions,
+    themeColors: IntArray = IntArray(0),
     onLongPress: (GlucoseEntry) -> Unit = {},
 ) {
     val entries  by viewModel.glucoseEntries.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
 
-    val windowEndState = remember { mutableLongStateOf(0L) }
+    // Ventana de 8 horas — igual que el original JCurve.hpp: duration = 8*60*60
     val windowMsState  = remember { mutableFloatStateOf(8L * 3_600_000L.toFloat()) }
+    val windowEndState = remember { mutableLongStateOf(0L) }
 
-    if (windowEndState.longValue == 0L) {
-        windowEndState.longValue = if (entries.isNotEmpty())
-            entries.maxOf { it.timestampMs } + 5L * 60L * 1000L
-        else
-            System.currentTimeMillis()
+    // Inicializar windowEnd la primera vez que llegan datos reales.
+    // Margen pequeño (15 min) para que el último punto quede cerca del borde inferior
+    // del gráfico portrait, sin dejar espacio en blanco excesivo en el futuro.
+    if (windowEndState.longValue == 0L && entries.isNotEmpty()) {
+        windowEndState.longValue = entries.maxOf { it.timestampMs } + 15L * 60_000L
     }
 
     val windowEndMs by windowEndState
@@ -127,7 +128,7 @@ fun GlucoseChartScreen(
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── Chart con su propio tema (puede invertir colores) ────────────────
-        GlucoseTheme(invertColors = settings.invertColors) {
+        GlucoseTheme(invertColors = settings.invertColors, themeColors = themeColors) {
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
@@ -145,6 +146,7 @@ fun GlucoseChartScreen(
                                 windowMs       = windowMs,
                                 windowEndState = windowEndState,
                                 windowMsState  = windowMsState,
+                                onMenuClick    = { menuVisible = true },
                             )
                         } else {
                             PortraitLayout(
@@ -154,29 +156,29 @@ fun GlucoseChartScreen(
                                 windowMs       = windowMs,
                                 windowEndState = windowEndState,
                                 windowMsState  = windowMsState,
+                                onMenuClick    = { menuVisible = true },
                             )
                         }
                     }
-
-                    // Botón ⌄ — encima del chart, respeta el padding del sistema
-                    MenuButton(
-                        onClick  = { menuVisible = true },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp),
-                    )
                 }
             }
         }
 
-        // ── Menú overlay — hereda el MaterialTheme de la Activity ────────────
-        // Está fuera del GlucoseTheme para que sus colores vengan del tema
-        // dinámico (Material You) del dispositivo, igual que el tab "Ver".
+        // ── Menú overlay — usa el mismo tema Juggluco que el chart ───────────
+        // IMPORTANTE: NO usar remember() para envolver menuActions.copy() porque
+        // remember() congela el valor hasta que cambia la key, lo que provoca que
+        // el toggle "Modo oscuro" necesite varios toques si el heartbeat no ha
+        // actualizado settings.invertColors en el momento de abrir el menú.
+        // En su lugar, pasamos settings.invertColors directamente a VicoMenuSheet
+        // como parámetro separado — el composable lo lee como State reactivo.
         if (menuVisible) {
-            VicoMenuSheet(
-                actions   = menuActions,
-                onDismiss = { menuVisible = false },
-            )
+            GlucoseTheme(invertColors = settings.invertColors, themeColors = themeColors) {
+                VicoMenuSheet(
+                    actions      = menuActions,
+                    darkModeState = settings.invertColors,
+                    onDismiss    = { menuVisible = false },
+                )
+            }
         }
     }
 }
@@ -201,7 +203,7 @@ private fun MenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text       = "⌄",
+            text       = "☰",
             style      = MaterialTheme.typography.titleMedium,
             color      = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Bold,
@@ -225,6 +227,7 @@ private fun LandscapeLayout(
     windowMs:       Float,
     windowEndState: MutableLongState,
     windowMsState:  MutableFloatState,
+    onMenuClick:    () -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxSize()) {
         GlucoseLandscapeChart(
@@ -236,13 +239,22 @@ private fun LandscapeLayout(
             windowMsState  = windowMsState,
             modifier       = Modifier.weight(1f).fillMaxHeight(),
         )
-        // Panel lateral landscape: siempre en columna vertical
-        StatsPanelWithDirection(
-            entries     = entries,
-            settings    = settings,
-            modifier    = Modifier.width(200.dp).fillMaxHeight(),
-            isLandscape = true,
-        )
+        // Panel lateral landscape: 160dp — proporcional al panel inferior portrait
+        Column(modifier = Modifier.width(160.dp).fillMaxHeight()) {
+            StatsPanelWithDirection(
+                entries     = entries,
+                settings    = settings,
+                modifier    = Modifier.fillMaxWidth().weight(1f),
+                isLandscape = true,
+                onMenuClick = onMenuClick,
+            )
+            SensorExpiryOverlay(
+                settings    = settings,
+                entries     = entries,
+                windowEndMs = windowEndMs,
+                windowMs    = windowMs,
+            )
+        }
     }
 }
 
@@ -259,6 +271,7 @@ private fun PortraitLayout(
     windowMs:       Float,
     windowEndState: MutableLongState,
     windowMsState:  MutableFloatState,
+    onMenuClick:    () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Tarjeta con bordes redondeados que contiene el gráfico
@@ -284,9 +297,17 @@ private fun PortraitLayout(
             )
         }
         StatsPanelWithDirection(
-            entries  = entries,
-            settings = settings,
-            modifier = Modifier.fillMaxWidth(),
+            entries     = entries,
+            settings    = settings,
+            modifier    = Modifier.fillMaxWidth(),
+            onMenuClick = onMenuClick,
+        )
+        // Fecha fin de sensor — debajo del panel de stats, sin ocupar espacio fijo
+        SensorExpiryOverlay(
+            settings     = settings,
+            entries      = entries,
+            windowEndMs  = windowEndMs,
+            windowMs     = windowMs,
         )
     }
 }
@@ -297,10 +318,11 @@ private fun StatsPanelWithDirection(
     settings:    ChartSettings,
     modifier:    Modifier = Modifier,
     isLandscape: Boolean  = false,
+    onMenuClick: () -> Unit,
 ) {
     val direction = if (settings.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
-        StatsPanel(entries, settings, modifier, isLandscape)
+        StatsPanel(entries, settings, modifier, isLandscape, onMenuClick)
     }
 }
 
@@ -328,6 +350,7 @@ private fun StatsPanel(
     settings:    ChartSettings,
     modifier:    Modifier = Modifier,
     isLandscape: Boolean  = false,
+    onMenuClick: () -> Unit = {},
 ) {
     val latest   = entries.maxByOrNull { it.timestampMs }
     val previous = entries
@@ -342,12 +365,19 @@ private fun StatsPanel(
     } ?: "—"
     val unitSuffix = if (settings.unit == GlucoseUnit.MMOL) "mmol/L" else "mg/dL"
 
-    // Color según zona
+    // Color según 5 zonas:
+    //   < veryLow              → rojo  (muy bajo)
+    //   veryLow .. targetLow   → amarillo (bajo)
+    //   targetLow .. targetHigh → verde  (en rango)
+    //   targetHigh .. veryHigh → amarillo (alto)
+    //   > veryHigh             → rojo  (muy alto)
     val glucoseColor = when {
-        latestDisplay == null               -> MaterialTheme.colorScheme.onSurfaceVariant
-        latestDisplay < settings.targetLow  -> Color(0xFFE53935)
-        latestDisplay > settings.targetHigh -> Color(0xFFFF8F00)
-        else                                -> Color(0xFF43A047)
+        latestDisplay == null                 -> MaterialTheme.colorScheme.onSurfaceVariant
+        latestDisplay < settings.veryLow      -> Color(0xFFE53935)
+        latestDisplay < settings.targetLow    -> Color(0xFFFFB300)
+        latestDisplay > settings.veryHigh     -> Color(0xFFE53935)
+        latestDisplay > settings.targetHigh   -> Color(0xFFFFB300)
+        else                                  -> Color(0xFF43A047)
     }
 
     // Tendencia — flechas diagonales como en el diseño deseado
@@ -424,9 +454,9 @@ private fun StatsPanel(
             StatHDivider()
             StatColumn("$highPct%", Color(0xFFFF8F00), "Alto",    "• $highLabel", Color(0xFFFF8F00), Modifier.fillMaxWidth())
             StatHDivider()
-            StatColumn("$lowPct%", Color(0xFF1E88E5),  "Bajo",    "• $lowLabel",  Color(0xFF1E88E5), Modifier.fillMaxWidth())
+            StatColumn("$lowPct%", Color(0xFFE53935),  "Bajo",    "• $lowLabel",  Color(0xFFE53935), Modifier.fillMaxWidth())
             StatHDivider()
-            // Tendencia en fila compacta
+            // Tendencia en fila compacta — muestra el valor dinámico ("Estable", "Subiendo", "Bajando")
             Row(
                 modifier          = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -438,103 +468,151 @@ private fun StatsPanel(
                     Text(trendArrow, style = MaterialTheme.typography.titleSmall, color = trendColor, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(8.dp))
-                Column {
-                    Text("Tendencia", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(trendLabel, style = MaterialTheme.typography.labelSmall, color = trendColor)
-                }
+                Text(trendLabel, style = MaterialTheme.typography.bodySmall, color = trendColor, fontWeight = FontWeight.SemiBold)
             }
         } else {
             // ── Portrait (panel inferior, ancho completo) ──────────────────────
-            // Separador superior del panel
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(MaterialTheme.colorScheme.outlineVariant),
-            )
-            // Fila 1: valor actual de glucosa + unidad + flecha de tendencia
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
+
+            // Fila 1: valor de glucosa dominante + badge tendencia + botón menú
             Row(
-                modifier          = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp, start = 12.dp, end = 12.dp),
+                modifier          = Modifier.fillMaxWidth().padding(top = 10.dp, start = 16.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Número grande — lo más importante de la pantalla
                 Text(
                     text       = displayValue,
-                    style      = MaterialTheme.typography.displaySmall,
+                    style      = MaterialTheme.typography.displayMedium,
                     color      = glucoseColor,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    text  = unitSuffix,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(verticalArrangement = Arrangement.Bottom) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text  = unitSuffix,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Spacer(Modifier.width(10.dp))
+                // Badge de tendencia: texto + fondo coloreado pill
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = trendColor.copy(alpha = 0.13f),
+                ) {
+                    Row(
+                        modifier          = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text       = trendArrow,
+                            style      = MaterialTheme.typography.labelMedium,
+                            color      = trendColor,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text  = trendLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = trendColor,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                // Botón menú — limpio, sin borde
                 Box(
-                    modifier         = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(trendColor.copy(alpha = 0.15f)),
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        .clickable(onClick = onMenuClick),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text       = trendArrow,
-                        style      = MaterialTheme.typography.titleMedium,
-                        color      = trendColor,
-                        fontWeight = FontWeight.Bold,
+                        text  = "☰",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text  = trendLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = trendColor,
-                )
             }
-            Spacer(Modifier.height(4.dp))
-            // Fila 2: 4 columnas TIR / Alto / Bajo / (Tendencia visual ya en fila 1 — reemplazada por vacío)
+
+            // Fila 2: chips TIR / Alto / Bajo con fondo real
             Row(
-                modifier              = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 10.dp, horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment     = Alignment.Top,
+                modifier              = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // TIR 24h — valor grande verde + "En rango"
-                StatColumn(
-                    value         = "$tirPct%",
-                    valueColor    = Color(0xFF43A047),
-                    label         = "TIR 24h",
-                    subLabel      = "• En rango",
-                    subLabelColor = Color(0xFF43A047),
-                    modifier      = Modifier.weight(1f),
+                TirChip(
+                    value    = "$tirPct%",
+                    label    = "TIR",
+                    color    = Color(0xFF43A047),
+                    modifier = Modifier.weight(1f),
                 )
-                StatDivider()
-                // Alto — valor grande naranja + "> umbral mg/dL"
-                StatColumn(
-                    value         = "$highPct%",
-                    valueColor    = Color(0xFFFF8F00),
-                    label         = "Alto",
-                    subLabel      = "• $highLabel",
-                    subLabelColor = Color(0xFFFF8F00),
-                    modifier      = Modifier.weight(1f),
+                TirChip(
+                    value    = "$highPct%",
+                    label    = "Alto  $highLabel",
+                    color    = Color(0xFFFFB300),
+                    modifier = Modifier.weight(1f),
                 )
-                StatDivider()
-                // Bajo — valor grande azul + "< umbral mg/dL"
-                StatColumn(
-                    value         = "$lowPct%",
-                    valueColor    = Color(0xFF1E88E5),
-                    label         = "Bajo",
-                    subLabel      = "• $lowLabel",
-                    subLabelColor = Color(0xFF1E88E5),
-                    modifier      = Modifier.weight(1f),
+                TirChip(
+                    value    = "$lowPct%",
+                    label    = "Bajo  $lowLabel",
+                    color    = Color(0xFFE53935),   // rojo: estándar clínico (Consenso Ámsterdam)
+                    modifier = Modifier.weight(1f),
                 )
             }
+
         }
     }
+}
+
+/**
+ * Muestra la fecha de fin del sensor como texto semitransparente superpuesto en la
+ * esquina inferior izquierda del panel, sin ocupar espacio propio.
+ * Solo aparece cuando el borde derecho visible del gráfico coincide con el último dato
+ * real (es decir, el usuario está "en el presente"), para no distraer al navegar el historial.
+ */
+@Composable
+private fun SensorExpiryOverlay(
+    settings:     ChartSettings,
+    entries:      List<GlucoseEntry>,
+    windowEndMs:  Long,
+    windowMs:     Float,
+) {
+    if (settings.sensorEndsMs <= 0L) return
+
+    // Solo mostrar cuando el usuario está viendo la parte más reciente de los datos
+    val latestDataMs = if (entries.isNotEmpty()) entries.maxOf { it.timestampMs } else return
+    val windowStartMs = windowEndMs - windowMs.toLong()
+    val isAtPresent = latestDataMs >= windowStartMs && latestDataMs <= windowEndMs
+
+    if (!isAtPresent) return
+
+    val context = LocalContext.current
+
+    // Usar DateFormat del sistema: respeta el idioma y preferencias de formato del usuario
+    // (DD/MM/YYYY en España, MM/DD/YYYY en EEUU, etc.)
+    val sensorEndsDate = remember(settings.sensorEndsMs, context) {
+        val date = java.util.Date(settings.sensorEndsMs)
+        val dateFmt = android.text.format.DateFormat.getMediumDateFormat(context)
+        // Usar patrón del sistema para la hora: si el usuario tiene 12h, incluye AM/PM;
+        // si tiene 24h, muestra H:mm. android.text.format.DateFormat.is24HourFormat()
+        // es la fuente canónica de esta preferencia en Android.
+        val timePattern = if (android.text.format.DateFormat.is24HourFormat(context)) "H:mm" else "h:mm a"
+        val timeFmt = java.text.SimpleDateFormat(timePattern, java.util.Locale.getDefault())
+        "${dateFmt.format(date)} ${timeFmt.format(date)}"
+    }
+
+    val isExpiringSoon = settings.sensorEndsMs - System.currentTimeMillis() < 24L * 3_600_000L
+    val textColor = if (isExpiringSoon) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Text(
+        text     = "Fin sensor: $sensorEndsDate",
+        style    = MaterialTheme.typography.labelSmall,
+        color    = textColor.copy(alpha = 0.65f),
+        modifier = Modifier.padding(start = 16.dp, bottom = 2.dp),
+    )
 }
 
 /**
@@ -577,6 +655,41 @@ private fun StatColumn(
 }
 
 /**
+ * Chip de estadística TIR/Alto/Bajo con fondo de Card y valor destacado.
+ */
+@Composable
+private fun TirChip(
+    value:    String,
+    label:    String,
+    color:    Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape    = RoundedCornerShape(12.dp),
+        color    = color.copy(alpha = 0.10f),
+    ) {
+        Column(
+            modifier            = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text       = value,
+                style      = MaterialTheme.typography.titleLarge,
+                color      = color,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text  = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = color.copy(alpha = 0.75f),
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+/**
  * Separador vertical fino entre columnas de estadísticas (portrait).
  */
 @Composable
@@ -607,24 +720,102 @@ private fun StatHDivider() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Applies Material 3 / Material You theme.
- * Uses dynamic colour on Android 12+ (API 31) and a static fallback on older devices.
+ * Applies a Material 3 ColorScheme derived from the current Activity theme.
+ *
+ * Instead of using Material You / dynamic colours (which ignore the user's custom
+ * Juggluco theme), we read `windowBackground` and button colours directly from the
+ * Activity's resolved theme attributes — the same values that `Applic.backgroundcolor`
+ * and `DynamicThemeUtils.createDynamicButton()` use on the View side.
+ *
  * [invertColors] is XOR-ed with the system dark-mode preference so the app's own
  * inverted-display toggle works correctly.
  */
 @Composable
 private fun GlucoseTheme(
     invertColors: Boolean,
+    themeColors:  IntArray = IntArray(0),
     content: @Composable () -> Unit,
 ) {
-    val context   = LocalContext.current
     val darkTheme = isSystemInDarkTheme() xor invertColors
 
-    val colorScheme = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    } else {
-        if (darkTheme) darkColorScheme() else lightColorScheme()
+    // themeColors[0]=bg, [1]=primary(button bg), [2]=onPrimary(button text), [3]=onSurface
+    // Resolved in Java from the Activity context which has the user's Juggluco theme.
+    // Usar el contenido del array como clave, no la referencia (los IntArrays no son
+    // comparables por valor en remember). Convertimos a lista para una clave estable.
+    val themeKey = remember(themeColors) { themeColors.toList() }
+    val colorScheme = remember(themeKey, darkTheme) {
+        buildJugglucoColorScheme(themeColors, darkTheme)
     }
 
     MaterialTheme(colorScheme = colorScheme, content = content)
+}
+
+/**
+ * Builds a Material 3 [ColorScheme] from pre-resolved Activity theme colours.
+ * [themeColors] is int[]{bgColor, primaryColor, onPrimaryColor, onSurfaceColor}
+ * as returned by DynamicThemeUtils.getThemeColors() called from Java.
+ * Falls back to M3 defaults when the array is empty (e.g. previews/tests).
+ */
+private fun buildJugglucoColorScheme(themeColors: IntArray, darkTheme: Boolean): androidx.compose.material3.ColorScheme {
+    if (themeColors.size < 4) {
+        return if (darkTheme) darkColorScheme() else lightColorScheme()
+    }
+
+    val background = Color(themeColors[0])
+    val primary    = Color(themeColors[1])
+    val onPrimary  = Color(themeColors[2])
+    val onSurface  = Color(themeColors[3])
+
+    // Cuando invertColors=true (modo oscuro del usuario), derivamos una paleta oscura
+    // invirtiendo la luminosidad del fondo: el chart canvas y el panel de stats
+    // mostrarán el color de fondo oscuro en lugar del beige/claro del tema.
+    val (bgFinal, onSurfaceFinal) = if (darkTheme) {
+        // Invertir la luminosidad: acercamos el fondo a negro y el texto a blanco
+        val invertedBg = Color(
+            red   = (1f - background.red)   * 0.85f,
+            green = (1f - background.green) * 0.85f,
+            blue  = (1f - background.blue)  * 0.85f,
+            alpha = 1f,
+        )
+        val invertedOnSurface = Color(
+            red   = (1f - onSurface.red).coerceIn(0.75f, 1f),
+            green = (1f - onSurface.green).coerceIn(0.75f, 1f),
+            blue  = (1f - onSurface.blue).coerceIn(0.75f, 1f),
+            alpha = 1f,
+        )
+        Pair(invertedBg, invertedOnSurface)
+    } else {
+        Pair(background, onSurface)
+    }
+
+    val surface              = bgFinal
+    val primaryContainer     = primary
+    val onPrimaryContainer   = onPrimary
+    val outline              = onSurfaceFinal.copy(alpha = 0.30f)
+
+    return if (darkTheme) {
+        darkColorScheme(
+            primary            = primary,
+            onPrimary          = onPrimary,
+            primaryContainer   = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            background         = bgFinal,
+            onBackground       = onSurfaceFinal,
+            surface            = surface,
+            onSurface          = onSurfaceFinal,
+            outline            = outline,
+        )
+    } else {
+        lightColorScheme(
+            primary            = primary,
+            onPrimary          = onPrimary,
+            primaryContainer   = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            background         = bgFinal,
+            onBackground       = onSurfaceFinal,
+            surface            = surface,
+            onSurface          = onSurfaceFinal,
+            outline            = outline,
+        )
+    }
 }

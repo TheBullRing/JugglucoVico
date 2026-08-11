@@ -70,6 +70,8 @@ class FakeGraphDataRepository(
         fun defaultSettings(): ChartSettings = ChartSettings(
             targetLow    = 70f,
             targetHigh   = 180f,
+            veryLow      = 54f,
+            veryHigh     = 250f,
             invertColors = false,
             unit         = GlucoseUnit.MGDL,
             isRtl        = false,

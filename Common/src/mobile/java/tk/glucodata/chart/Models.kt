@@ -59,7 +59,13 @@ data class ChartViewport(
 data class ChartSettings(
     val targetLow: Float,
     val targetHigh: Float,
+    /** Umbral "muy bajo": por debajo de este valor el punto es rojo. Derivado de alarmverylow(). */
+    val veryLow: Float,
+    /** Umbral "muy alto": por encima de este valor el punto es rojo. Derivado de alarmveryhigh(). */
+    val veryHigh: Float,
     val invertColors: Boolean,
     val unit: GlucoseUnit,
     val isRtl: Boolean,
+    /** Timestamp UTC en ms de cuándo expira el sensor activo. 0 si no hay sensor. */
+    val sensorEndsMs: Long = 0L,
 )

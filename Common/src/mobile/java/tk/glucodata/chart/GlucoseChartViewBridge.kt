@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModelProvider
 fun createGlucoseChartView(
     activity:    ComponentActivity,
     menuActions: VicoMenuActions,
+    themeColors: IntArray,
     onLongPress: ((GlucoseEntry) -> Unit) = {},
 ): ComposeView {
     val viewModel = ViewModelProvider(
@@ -32,6 +33,7 @@ fun createGlucoseChartView(
             GlucoseChartScreen(
                 viewModel   = viewModel,
                 menuActions = menuActions,
+                themeColors = themeColors,
                 onLongPress = onLongPress,
             )
         }

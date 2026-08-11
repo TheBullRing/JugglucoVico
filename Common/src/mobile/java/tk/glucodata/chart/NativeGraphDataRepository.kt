@@ -212,14 +212,43 @@ class NativeGraphDataRepository private constructor() : GraphDataRepository {
         // targetlow() / targethigh() call gconvert() in C++ which converts from
         // internal mg/L storage to the display unit (mmol/L or mg/dL).
         // Store them in DISPLAY units so no further conversion is needed in the UI.
-        // GlucoseChart.yValue() must NOT divide again for these — they are passed
-        // directly as threshold Y positions.
+        val targetLow  = Natives.targetlow()
+        val targetHigh = Natives.targethigh()
+
+        // Umbrales "muy bajo" y "muy alto" para coloración de 5 zonas.
+        //
+        // Jerarquía de fuentes (de más a menos específico):
+        //   veryLow  : alarmverylow  → alarmlow (umbral bajo normal) → 60 mg/dL fijo
+        //   veryHigh : alarmveryhigh → alarmhigh (umbral alto normal) → targetHigh + 40
+        //
+        // Esto asegura que la franja amarilla refleja el rango de alarma real del usuario,
+        // y no un valor hardcoded que puede ser demasiado amplio (ej. 180→250).
+        val veryLow = when {
+            Natives.hasalarmverylow()  -> Natives.alarmverylow()
+            Natives.hasalarmlow()      -> Natives.alarmlow()
+            else                       -> if (ismmol) 3.3f else 60f
+        }
+        val veryHigh = when {
+            Natives.hasalarmveryhigh() -> Natives.alarmveryhigh()
+            Natives.hasalarmhigh()     -> Natives.alarmhigh()
+            else                       -> targetHigh + if (ismmol) 2.2f else 40f
+        }
+
+        // sensorends() devuelve uint32_t en SEGUNDOS desde epoch (ver javacurve.cpp:60).
+        // Multiplicamos por 1000 para obtener milisegundos.
+        val sensorEndsRaw = Natives.sensorends()
+        val sensorEndsMs  = if (sensorEndsRaw > 0L) sensorEndsRaw * 1_000L else 0L
+        Log.d(TAG, "snapshotSettings: sensorEndsRaw=$sensorEndsRaw sensorEndsMs=$sensorEndsMs")
+
         return ChartSettings(
-            targetLow    = Natives.targetlow(),
-            targetHigh   = Natives.targethigh(),
+            targetLow    = targetLow,
+            targetHigh   = targetHigh,
+            veryLow      = veryLow,
+            veryHigh     = veryHigh,
             invertColors = Natives.getInvertColors(),
             unit         = if (ismmol) GlucoseUnit.MMOL else GlucoseUnit.MGDL,
             isRtl        = MainActivity.rtl,
+            sensorEndsMs = sensorEndsMs,
         )
     }
 }

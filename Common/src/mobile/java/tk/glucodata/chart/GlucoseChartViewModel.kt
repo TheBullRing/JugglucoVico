@@ -59,15 +59,18 @@ class GlucoseChartViewModel(
 
     /**
      * Rendering settings (target band, colour mode, unit, RTL flag).
+     * Eagerly started — settings reads are cheap and must be available immediately.
      */
     val settings: StateFlow<ChartSettings> =
         repository.observeSettings()
             .stateIn(
                 scope        = viewModelScope,
-                started      = SharingStarted.WhileSubscribed(5_000L),
+                started      = SharingStarted.Eagerly,
                 initialValue = ChartSettings(
                     targetLow    = 70f,
                     targetHigh   = 180f,
+                    veryLow      = 54f,
+                    veryHigh     = 250f,
                     invertColors = false,
                     unit         = GlucoseUnit.MGDL,
                     isRtl        = false,
