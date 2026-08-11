@@ -16,6 +16,7 @@
  */
 package tk.glucodata.chart
 
+import tk.glucodata.Natives
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -302,15 +303,34 @@ private fun DrawScope.drawLandscapeChart(
     val lastEntry = visible.maxByOrNull { it.timestampMs }
     val nowMs     = System.currentTimeMillis()
     if (lastEntry != null && nowMs - lastEntry.timestampMs <= 10L * 60_000L) {
+        // Calcular slope con la misma estrategia que StatsPanel:
+        //   1. Tasa nativa del sensor (Natives.lastglucose().rate, mg/dL/min) — más precisa.
+        //   2. Fallback: pendiente lineal sobre ventana de 20 min.
+        //   3. Amortiguación en pico prandial: glucosa >200 + cambio de signo → ×0.5.
+        val sensorRate: Float? = try {
+            Natives.lastglucose()?.rate?.let { r -> if (r.isNaN()) null else r }
+        } catch (_: Exception) { null }
+
         val recentForSlope = entries
             .filter { it.sensorIndex == lastEntry.sensorIndex }
             .sortedBy { it.timestampMs }
-            .takeLast(6)
+        val newest = lastEntry
         if (recentForSlope.size >= 2) {
-            val oldest    = recentForSlope.first()
-            val newest    = recentForSlope.last()
-            val dtMin     = (newest.timestampMs - oldest.timestampMs) / 60_000f
-            val slope     = if (dtMin > 0f) (newest.valueMgdL - oldest.valueMgdL) / dtMin else 0f
+            val rawSlope: Float? = if (sensorRate != null) {
+                sensorRate
+            } else {
+                val windowStart20 = newest.timestampMs - 20L * 60_000L
+                val pts = recentForSlope.filter { it.timestampMs >= windowStart20 }
+                if (pts.size >= 2) {
+                    val dtMin = (pts.last().timestampMs - pts.first().timestampMs) / 60_000f
+                    if (dtMin > 0f) (pts.last().valueMgdL - pts.first().valueMgdL) / dtMin else null
+                } else null
+            }
+            val prevEntry = recentForSlope.dropLast(1).lastOrNull()
+            val instantDelta = if (prevEntry != null) newest.valueMgdL - prevEntry.valueMgdL else 0f
+            val slope = if (rawSlope != null && newest.valueMgdL > 200f && rawSlope * instantDelta < 0f)
+                rawSlope * 0.5f else rawSlope ?: 0f
+
             val predMs      = 20L * 60_000L
             val predValue   = lcDisplayUnit((newest.valueMgdL + slope * 20f).coerceIn(20f, 400f), unit)
             val ptX0        = timeToX(newest.timestampMs)
@@ -365,9 +385,9 @@ private fun DrawScope.drawLandscapeChart(
                     drawCircle(predColor.copy(alpha = 0.25f), 6.dp.toPx(), Offset(ptX1, ptY1))
                     drawCircle(predColor.copy(alpha = 0.55f), 3.dp.toPx(), Offset(ptX1, ptY1))
                 }
-            }
-        }
-    }
+            }  // if ptX1 > ptX0 + 2f
+        }  // if recentForSlope.size >= 2
+    }  // if lastEntry != null
 
     for ((_, sensorEntries) in visible.groupBy { it.sensorIndex }.toSortedMap()) {
         drawLandscapeLine(
