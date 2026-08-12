@@ -237,7 +237,7 @@ private fun ChartTopBar(onMenuClick: () -> Unit) {
             }
             if (appIconBitmap != null) {
                 androidx.compose.foundation.Image(
-                    bitmap             = androidx.compose.ui.graphics.asImageBitmap(appIconBitmap),
+                    bitmap             = appIconBitmap.asImageBitmap(),
                     contentDescription = null,
                     modifier           = Modifier
                         .size(24.dp)
