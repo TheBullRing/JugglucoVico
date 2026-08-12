@@ -213,13 +213,13 @@ private fun ChartTopBar(onMenuClick: () -> Unit) {
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Icono de la app (mipmap) + nombre — 24dp, sin aumentar la altura de 40dp
+        // Icono de la app (mipmap propio) + nombre — 24dp, sin aumentar la altura de 40dp
         Row(
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             androidx.compose.foundation.Image(
-                painter            = painterResource(id = android.R.mipmap.sym_def_app_icon),
+                painter            = painterResource(id = tk.glucodata.R.mipmap.ic_launcher),
                 contentDescription = null,
                 modifier           = Modifier
                     .size(24.dp)
