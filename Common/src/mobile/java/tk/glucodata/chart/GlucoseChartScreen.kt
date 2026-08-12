@@ -213,18 +213,36 @@ private fun ChartTopBar(onMenuClick: () -> Unit) {
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Icono de la app (mipmap propio) + nombre — 24dp, sin aumentar la altura de 40dp
+        // Icono de la app — PackageManager con el packageName real en tiempo de ejecución.
+        // Funciona en todos los flavors (debug/release) sin hardcodear R ni applicationId.
         Row(
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            androidx.compose.foundation.Image(
-                painter            = painterResource(id = tk.glucodata.R.mipmap.ic_launcher),
-                contentDescription = null,
-                modifier           = Modifier
-                    .size(24.dp)
-                    .clip(RoundedCornerShape(6.dp)),
-            )
+            val ctx = LocalContext.current
+            val appIconBitmap = remember(ctx) {
+                try {
+                    val drawable = ctx.packageManager.getApplicationIcon(ctx.packageName)
+                    val bmp = android.graphics.Bitmap.createBitmap(
+                        drawable.intrinsicWidth.coerceAtLeast(1),
+                        drawable.intrinsicHeight.coerceAtLeast(1),
+                        android.graphics.Bitmap.Config.ARGB_8888,
+                    )
+                    val canvas = android.graphics.Canvas(bmp)
+                    drawable.setBounds(0, 0, canvas.width, canvas.height)
+                    drawable.draw(canvas)
+                    bmp
+                } catch (_: Exception) { null }
+            }
+            if (appIconBitmap != null) {
+                androidx.compose.foundation.Image(
+                    bitmap             = androidx.compose.ui.graphics.asImageBitmap(appIconBitmap),
+                    contentDescription = null,
+                    modifier           = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                )
+            }
             Text(
                 text       = "Juggluco",
                 style      = MaterialTheme.typography.titleSmall,
