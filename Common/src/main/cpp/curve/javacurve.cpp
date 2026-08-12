@@ -1,4 +1,4 @@
-﻿#include <sys/prctl.h>
+#include <sys/prctl.h>
 #include "curve.hpp"
 #include <jni.h>
 #include <string_view>
@@ -972,15 +972,4 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(setunit)(JNIEnv *env, jclass cl,ji
  setallunit(unit);
 	}
 
-extern "C" JNIEXPORT void  JNICALL   fromjava(setfixatey)(JNIEnv *env, jclass cl,jboolean val) {
-    settings->data()->fixatey=val;
-    appcurve.fixatey=val;
-    }
-
-extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getfixatey)(JNIEnv *env, jclass cl) {
-    return settings->data()->fixatey;
-    }
-
-extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getfixatex)(JNIEnv *env, jclass cl) {
-    return settings->data()->fixatex;
-    }
+// MERGE_REVIEW: setfixatey/getfixatey/getfixatex moved to settings/javasettings.cpp in upstream 10.10.0

@@ -1,1 +1,1 @@
-﻿../../../../wear/java/tk/glucodata/WebPageUpload.java
+../../../../wear/java/tk/glucodata/WebPageUpload.java
