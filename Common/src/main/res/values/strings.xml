@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
     <string name="language">en</string>
     <string name="languagename">Language</string>
     <string name="app_name">Juggluco</string>
@@ -79,12 +79,7 @@
  <string name="startsapp">Scanning starts app</string>
  <string name="patchedlibrebroadcast">Patched Libre</string>
  <string name="disablecamerakey">Disable camera key</string>
- <string name="invertscreen">Rotate 180°</string>
- <string name="orientation_landscape">Landscape</string>
- <string name="orientation_reverse_landscape">Reverse landscape</string>
- <string name="orientation_free">Free rotation</string>
- <string name="screen_rotation">Screen rotation</string>
- <string name="use_vico_chart">Use new chart (Vico)</string>
+ <string name="invertscreen">Rotate 180┬░</string>
  <string name="nfcsound">NFC sound</string>
  <string name="manuallyscale">Manually scale </string>
  <string name="time">Time</string>
@@ -325,6 +320,7 @@
  <string name="allsentnoreceive">When everything is sent to a host, \"Receive from\" should be turned off.</string>
  <string name="nomirrorport">The port number should be different from the mirror port</string>
  <string name="nohttpport">The port number should be different from the http port</string>
+ <string name="httpportxdripwarning">The web server only works with xDrip watch apps when the HTTP port is 17580.</string>
 <string name="ready_in">" ready in "</string>
 <string name="ready_for_use">Sensor ready for use</string>
 <string name="endstime">" ends at this time"</string>
@@ -366,7 +362,7 @@
 
    <string name="text">Text</string>
    <string name="arrow">Arrow</string>
-   <string name="notalldata">WARNING: “Receive from” not set, but some data types are not sent.</string>
+   <string name="notalldata">WARNING: ΓÇ£Receive fromΓÇ¥ not set, but some data types are not sent.</string>
   <string name="libresetalllabels">First specify for each label what should be done with it.</string>
    <string name="photo">Photo</string>
    <string name="photomessage">Scan the data matrix of a Dexcom G7/ONE+ or Sibionics GS1 sensor or the mirror QR code.</string>
@@ -419,7 +415,7 @@
  <string name="nothing"></string>
  <string name="scantranstitle">Scan TRANSMITTER data matrix</string>
  <string name="scantransmessage">Sibionics 2 sensor data matrix successfully scanned. \nScan now the transmitter data matrix.</string>
- <string name="mirrorscansucces">Successfully added connection to left middle menu→Mirror.</string>
+ <string name="mirrorscansucces">Successfully added connection to left middle menuΓåÆMirror.</string>
  <string name="resettitle">Reset</string>
  <string name="resetmessage">Clears transmitter memory. Should be pressed before using a new sensor in an already used transmitter.</string>
  <string name="nolibrelink">Use the EverSense Broadcast instead. See help.</string>
@@ -475,7 +471,7 @@
     <string name="failed">failed</string>
     <string name="successful">successful</string>
     <string name="use">Activate</string>
-    <string name="connecttosensor">Connecting to sensor…</string>
+    <string name="connecttosensor">Connecting to sensorΓÇª</string>
     <string name="clear">Clear</string>
     <string name="clearingmemory">Clearing sensor memory</string>
     <string name="clearmessage">Restart sensor? Clearing sensor memory?</string>
@@ -494,7 +490,7 @@
      <string name="leave">Leave?</string>
      <string name="id0message">ID should be different from 0</string>
      <string name="emailnotused">Email password combination not used and will not be saved.</string>
-    <string name="connecttoserver">Connecting to server…</string>
+    <string name="connecttoserver">Connecting to serverΓÇª</string>
     <string name="retrievefailed">Retrieving account id failed</string>
     <string name="themesname">Themes:</string>
     <string name="buttonshape">Button shape</string>
@@ -510,9 +506,36 @@
     <string name="media">Media</string>
     <string name="notification">Notification</string>
     <string name="alarmis">Alarm is</string>
-    <string name="USE_ALARM">Alarm is alarm</string>
     <string name="deletemeter">Remove meter information. Measurements will remain.</string>
 
+    <!-- Web server additions file manager -->
+    <string name="webuploadpages">Upload web pages</string>
+    <string name="webuploadfiles">Upload files</string>
+    <string name="webuploaddirectory">Upload directory</string>
+    <string name="webup">Up</string>
+    <string name="webcantaccessdirectory">"Can't access %1$s directory"</string>
+    <string name="webcantcreatedirectory">"Can't create %1$s"</string>
+    <string name="webcantopenfileselector">"Can't open file selector"</string>
+    <string name="webcantopendirectoryselector">"Can't open directory selector"</string>
+    <string name="webinvaliddirectory">Invalid %1$s directory</string>
+    <string name="webuploadingfiles">Uploading filesΓÇª</string>
+    <string name="webuploadingdirectory">Uploading directoryΓÇª</string>
+    <string name="webuploadresult">Files uploaded: %1$d; directories: %2$d; failed: %3$d</string>
+    <string name="webdeletefilequestion">Delete file \"%1$s\"?</string>
+    <string name="webdeletedirectoryquestion">Delete directory \"%1$s\" and everything in it?</string>
+    <string name="webdeleting">Deleting %1$sΓÇª</string>
+    <string name="webdeleted">%1$s deleted</string>
+    <string name="webdeletefailed">"Couldn't delete %1$s"</string>
+    <string name="webdirectoryempty">This directory is empty</string>
+    <string name="webdirectoryentry">[dir] %1$s</string>
+
+    <!-- Portrait / Vico chart additions -->
+    <string name="orientation_landscape">Landscape</string>
+    <string name="orientation_reverse_landscape">Reverse landscape</string>
+    <string name="orientation_free">Free rotation</string>
+    <string name="screen_rotation">Screen rotation</string>
+    <string name="use_vico_chart">Use new chart (Vico)</string>
+    <string name="USE_ALARM">Alarm is alarm</string>
     <!-- Portrait menu tab labels -->
     <string name="menus_tab_system">System</string>
     <string name="menus_tab_data">Data</string>

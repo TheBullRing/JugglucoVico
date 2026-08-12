@@ -278,22 +278,24 @@ private void startdisplay() {
             () -> { act.lightBars(!getInvertColors()); Natives.prevday(7); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
             () -> { act.lightBars(!getInvertColors()); Natives.nextday(7); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
             // ── Ver — estado y callbacks ────────────────────────────────────────
-            Natives.getsystemui(),   checked -> { Natives.setsystemui(checked); act.selectionSystemUI(); return kotlin.Unit.INSTANCE; },
-            Natives.getshowscans(),  checked -> { Natives.setshowscans(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getshowcalibratedscans(),  checked -> { Natives.setshowcalibratedscans(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getshowstream(), checked -> { Natives.setshowstream(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getshowcalibratedstream(), checked -> { Natives.setshowcalibratedstream(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getshowhistories(), checked -> { Natives.setshowhistories(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getshowcalibratedhistories(), checked -> { Natives.setshowcalibratedhistories(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getshownumbers(), checked -> { Natives.setshownumbers(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getshowmeals(),  checked -> { Natives.setshowmeals(checked); return kotlin.Unit.INSTANCE; },
-            getInvertColors(),       checked -> { Natives.setInvertColors(checked); return kotlin.Unit.INSTANCE; },
-            Natives.getfloatglucose(), checked -> { tk.glucodata.Floating.setfloatglucose(act, checked); return kotlin.Unit.INSTANCE; }
+            Natives.getsystemui(),              checked -> { Natives.setsystemui(checked);                act.selectionSystemUI(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowscans(),             checked -> { Natives.setshowscans(checked);               tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowcalibratedscans(),   checked -> { Natives.setshowcalibratedscans(checked);     tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowstream(),            checked -> { Natives.setshowstream(checked);              tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowcalibratedstream(),  checked -> { Natives.setshowcalibratedstream(checked);    tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowhistories(),         checked -> { Natives.setshowhistories(checked);           tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowcalibratedhistories(),checked ->{ Natives.setshowcalibratedhistories(checked); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getshownumbers(),           checked -> { Natives.setshownumbers(checked);             tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getshowmeals(),             checked -> { Natives.setshowmeals(checked);               tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            getInvertColors(),                  checked -> { Natives.setInvertColors(checked);            tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            Natives.getfloatglucose(),          checked -> { tk.glucodata.Floating.setfloatglucose(act, checked); return kotlin.Unit.INSTANCE; },
+            Applic.usePortraitPivoted(),        checked -> { Applic.setPortraitPivoted(checked); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; }
         );
 
         android.view.View composeView = GlucoseChartViewBridgeKt.createGlucoseChartView(
                 this,
                 menuActions,
+                tk.glucodata.DynamicThemeUtils.getThemeColors(this),
                 entry -> {
                     // Long-press: open number-entry at the tapped data point.
                     Applic.RunOnUiThread(() -> curveRef.numberview.addnumberview(MainActivity.this, entry.getTimestampMs()));
@@ -1245,6 +1247,8 @@ if(!isWearable) {
    updateRtl(newConfig);
     if(curve!=null)
           curve.configurationChanged(this);
+    // Rebuild Settings overlay with correct portrait/landscape rows
+    tk.glucodata.settings.Settings.recreateIfOpen();
    }
 public void requestRender() {
     if(curve!=null)
@@ -1449,6 +1453,8 @@ public static final int IGNORE_BATTERY_OPTIMIZATION_SETTINGS=0x100;
 static final int OVERLAY_PERMISSION_REQUEST_CODE=0x40;
 public static final int REQUEST_SAVE_LOG=0x300;
 public static final int REQUEST_SAVE_LOGCAT=0x301;
+public static final int REQUEST_WEBPAGES=0x302;
+public static final int REQUEST_WEBTREE=0x303;
 //static final private int REQUEST_CHECK_SETTINGS=0x20;
 //public static final int REQUEST_IGNORE_BATTERY_OPTIMIZATIONS=0x300;
 Openfile openfile=null;
@@ -1545,13 +1551,18 @@ protected void onActivityResult(int requestCode, int resultCode, Intent data) {
                };
             }
          return;
-      case REQUEST_BARCODE_SIB2: 
-      case REQUEST_BARCODE: 
+      case REQUEST_BARCODE_SIB2:
+      case REQUEST_BARCODE:
          if(SiBionics==1 &&!isWearable&&useZXing) {
            ZXing.zXingResult(resultCode, data,this,requestCode);
            return;
            };break;
-    case REQUEST_SAVE_LOGCAT: 
+    case REQUEST_WEBPAGES:
+    case REQUEST_WEBTREE: {
+            WebPageUpload.onActivityResult(this,requestCode,resultCode,data);
+            return;
+        }
+    case REQUEST_SAVE_LOGCAT:
     case REQUEST_SAVE_LOG: {
             if(resultCode == Activity.RESULT_OK) {
                Uri uri; 
