@@ -175,6 +175,32 @@ void EnableIntentScanning(boolean val) {
     }
     }
 static private Settings thisone=null;
+
+// ── Accesores públicos para el path Vico/Compose (intent-scan) ───────────────
+/** Comprueba si el escaneo por intent está habilitado. Llamable desde Kotlin. */
+public static boolean isIntentScanEnabled(android.content.Context context) {
+    try {
+        android.content.pm.PackageManager manage = context.getPackageManager();
+        android.content.ComponentName scan = new android.content.ComponentName(context, "tk.glucodata.glucodata");
+        return manage.getComponentEnabledSetting(scan) != android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+    } catch (Throwable e) {
+        Log.stack(LOG_ID, e);
+    }
+    return false;
+}
+/** Habilita o deshabilita el escaneo por intent. Llamable desde Kotlin. */
+public static void setIntentScanEnabled(android.content.Context context, boolean val) {
+    try {
+        android.content.pm.PackageManager manage = context.getPackageManager();
+        android.content.ComponentName scan = new android.content.ComponentName(context, "tk.glucodata.glucodata");
+        int state = val ? android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                       : android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+        manage.setComponentEnabledSetting(scan, state, android.content.pm.PackageManager.DONT_KILL_APP);
+    } catch (Throwable e) {
+        Log.stack(LOG_ID, e);
+    }
+}
+
 public static void set(MainActivity act) {
     act.themeLightBars();
     thisone=new Settings();
@@ -236,14 +262,20 @@ private void makesettings(MainActivity act) {
 
 
 void recreate() {
-// removeContentView(settinglayout);
     layoutweg();
-   mksettings(activity);
-
-   }
+    mksettings(activity);
+    }
 void layoutweg() {
-/*     removeContentView(settinglayout);
-    settinglayout=null;*/
+    if(settinglayout!=null) {
+        removeContentView(settinglayout);
+        settinglayout=null;
+        }
+    }
+/** Called from MainActivity.onConfigurationChanged — rebuilds the layout
+ *  with the correct portrait/landscape rows for the new orientation. */
+public static void recreateIfOpen() {
+    if(thisone!=null && isOpen())
+        thisone.recreate();
     }
 public static void closeview() {
     if(thisone!=null)
@@ -252,8 +284,11 @@ public static void closeview() {
 static void hideSystemUI() {
     }
 void finish() {
+    // layoutweg() nulls settinglayout — capture it before the call
+    final FrameLayout sl = settinglayout;
     layoutweg();
-    settinglayout.setVisibility(GONE);
+    if (sl != null) sl.setVisibility(GONE);
+    if (settinglayout == null) settinglayout = sl; // restore so removeContentView below works
     
     try {
         // Restore orientation through the Android-16-aware helper so that
@@ -382,6 +417,7 @@ static float round(float value,float size)  {
    return Math.round(value*size)/size;
    }
 void setvalues() {
+      if(mmolL==null||mgdl==null) return;
       final var unit= Natives.getunit();
         switch(unit) {
             case 1: mmolL.setChecked(true);break;
@@ -1466,7 +1502,10 @@ private    void mksettings(MainActivity context) {
         final int[] orientationLabels  = {R.string.orientation_free,
                                           R.string.orientation_landscape,
                                           R.string.orientation_reverse_landscape};
-        final int currentOrientation   = Natives.getScreenOrientation();
+        // Normalize: 127 (C++ sentinel "never set") and 0 (old UI default landscape)
+        // both display as "Libre" in the spinner.
+        int rawOrientation = Natives.getScreenOrientation();
+        final int currentOrientation = (rawOrientation == 127 || rawOrientation == 0) ? -1 : rawOrientation;
         int orientInitPos = 0;
         for (int i = 0; i < orientationValues.length; i++) {
             if (orientationValues[i] == currentOrientation) { orientInitPos = i; break; }
@@ -1508,13 +1547,44 @@ private    void mksettings(MainActivity context) {
         });
 
         View[] rowglu=new View[]{floatconfig,calibration,glucosenotify};
- //        View[] rowglu=new View[]{floatconfig,glucosenotify};
-        // Portrait uses the same rows as landscape — the outer ScrollView handles overflow.
-        // A dedicated portrait layout requires the Settings overlay to be rebuilt on rotation,
-        // which is not yet implemented. Using a single row set avoids the landscape regression
-        // where shouldPortraitStack() returns true if Settings was opened in portrait.
-        final Object[][] landscapeViews=new Object[][]{row0, hasnfc?new View[]{nfcsound, globalscan,camera}:null,new View[]{orientLabel,orientSpin},new View[]{vicoToggle},rowglu,new View[]{exchanges,numalarm,alarmbut},numdis, row9};
-        views=landscapeViews;
+
+        // ── Filas para landscape (múltiples ítems por fila) ──────────────────
+        final Object[][] landscapeViews = new Object[][]{
+            row0,
+            hasnfc ? new View[]{nfcsound, globalscan, camera} : null,
+            new View[]{orientLabel, orientSpin},
+            new View[]{vicoToggle},
+            rowglu,
+            new View[]{exchanges, numalarm, alarmbut},
+            numdis,
+            row9
+        };
+
+        // ── Filas para portrait (máx 2 ítems por fila para evitar corte) ────
+        final Object[][] portraitViews = new Object[][]{
+            row0,
+            hasnfc ? new View[]{nfcsound, globalscan} : null,
+            hasnfc && camera != null ? new View[]{camera} : null,
+            new View[]{orientLabel, orientSpin},
+            new View[]{vicoToggle},
+            new View[]{floatconfig, calibration},
+            new View[]{glucosenotify},
+            new View[]{exchanges, numalarm},
+            new View[]{alarmbut},
+            numdis.length > 2
+                ? new View[]{numdis[0], numdis[1]}
+                : numdis,
+            numdis.length > 2
+                ? java.util.Arrays.copyOfRange(numdis, 2, numdis.length)
+                : null,
+            advhelp != null
+                ? new View[]{help, advanced}
+                : new View[]{help},
+            new View[]{intro, about},
+            new View[]{close}
+        };
+
+        views = Layout.portraitRows(portraitViews, landscapeViews);
         }
 
     help.setFocusableInTouchMode(true);
@@ -1552,6 +1622,7 @@ private    void mksettings(MainActivity context) {
 
     ScrollView scroller=new ScrollView(context);
     scroller.addView(lay);
+    scroller.setFillViewport(true);
     scroller.setSmoothScrollingEnabled(false);
    scroller.setVerticalScrollBarEnabled(Applic.scrollbar);
    scroller.setScrollbarFadingEnabled(true);//Crash with NestedScrollView

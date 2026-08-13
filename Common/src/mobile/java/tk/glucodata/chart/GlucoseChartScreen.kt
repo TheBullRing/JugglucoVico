@@ -28,11 +28,16 @@
  */
 package tk.glucodata.chart
 
+import tk.glucodata.ui.menus.VicoMenuHost
+import tk.glucodata.ui.menus.VicoMenuViewModel
 import android.content.res.Configuration
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -108,10 +113,10 @@ import tk.glucodata.Natives
  */
 @Composable
 fun GlucoseChartScreen(
-    viewModel:   GlucoseChartViewModel,
-    menuActions: VicoMenuActions,
-    themeColors: IntArray = IntArray(0),
-    onLongPress: (GlucoseEntry) -> Unit = {},
+    viewModel:     GlucoseChartViewModel,
+    menuActions:   VicoMenuActions,
+    menuViewModel: VicoMenuViewModel,
+    onLongPress:   (GlucoseEntry) -> Unit = {},
 ) {
     val entries  by viewModel.glucoseEntries.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -138,7 +143,7 @@ fun GlucoseChartScreen(
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── Chart con su propio tema (puede invertir colores) ────────────────
-        GlucoseTheme(invertColors = settings.invertColors, themeColors = themeColors) {
+        GlucoseTheme(invertColors = settings.invertColors) {
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
@@ -176,21 +181,19 @@ fun GlucoseChartScreen(
         }
 
         // ── Menú overlay — usa el mismo tema Juggluco que el chart ───────────
-        // IMPORTANTE: NO usar remember() para envolver menuActions.copy() porque
-        // remember() congela el valor hasta que cambia la key, lo que provoca que
-        // el toggle "Modo oscuro" necesite varios toques si el heartbeat no ha
-        // actualizado settings.invertColors en el momento de abrir el menú.
-        // En su lugar, pasamos settings.invertColors directamente a VicoMenuSheet
-        // como parámetro separado — el composable lo lee como State reactivo.
         if (menuVisible) {
-            GlucoseTheme(invertColors = settings.invertColors, themeColors = themeColors) {
+            GlucoseTheme(invertColors = settings.invertColors) {
                 VicoMenuSheet(
-                    actions      = menuActions,
+                    actions       = menuActions,
                     darkModeState = settings.invertColors,
-                    onDismiss    = { menuVisible = false },
+                    onDismiss     = { menuVisible = false },
                 )
             }
         }
+
+        // ── Diálogos Compose del path Vico (Fase 8) ──────────────────────────
+        // VicoMenuHost observa menuViewModel.state y muestra el diálogo activo.
+        VicoMenuHost(viewModel = menuViewModel)
     }
 }
 
@@ -1183,153 +1186,29 @@ private fun StatHDivider() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Applies a Material 3 ColorScheme derived from the current Activity theme.
+ * Tema M3 para el chart y el menú Vico.
  *
- * Instead of using Material You / dynamic colours (which ignore the user's custom
- * Juggluco theme), we read `windowBackground` and button colours directly from the
- * Activity's resolved theme attributes — the same values that `Applic.backgroundcolor`
- * and `DynamicThemeUtils.createDynamicButton()` use on the View side.
+ * Usa Material You (dynamicColorScheme) en Android 12+ para aprovechar
+ * los colores del fondo de pantalla del usuario.
+ * En versiones anteriores usa darkColorScheme / lightColorScheme estándar de M3.
  *
- * [invertColors] is XOR-ed with the system dark-mode preference so the app's own
- * inverted-display toggle works correctly.
+ * [invertColors] es el toggle "Modo oscuro" propio de Juggluco — se hace XOR
+ * con el tema del sistema para que el usuario pueda forzar modo oscuro
+ * independientemente del ajuste del sistema.
  */
 @Composable
 private fun GlucoseTheme(
     invertColors: Boolean,
-    themeColors:  IntArray = IntArray(0),
     content: @Composable () -> Unit,
 ) {
     val darkTheme = isSystemInDarkTheme() xor invertColors
+    val context   = LocalContext.current
 
-    // themeColors[0]=bg, [1]=primary(button bg), [2]=onPrimary(button text), [3]=onSurface
-    // Resolved in Java from the Activity context which has the user's Juggluco theme.
-    // Usar el contenido del array como clave, no la referencia (los IntArrays no son
-    // comparables por valor en remember). Convertimos a lista para una clave estable.
-    val themeKey = remember(themeColors) { themeColors.toList() }
-    val colorScheme = remember(themeKey, darkTheme) {
-        buildJugglucoColorScheme(themeColors, darkTheme)
+    val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else {
+        if (darkTheme) darkColorScheme() else lightColorScheme()
     }
 
     MaterialTheme(colorScheme = colorScheme, content = content)
-}
-
-/**
- * Builds a Material 3 [ColorScheme] from pre-resolved Activity theme colours.
- * [themeColors] is int[]{bgColor, primaryColor, onPrimaryColor, onSurfaceColor}
- * as returned by DynamicThemeUtils.getThemeColors() called from Java.
- * Falls back to M3 defaults when the array is empty (e.g. previews/tests).
- */
-private fun buildJugglucoColorScheme(themeColors: IntArray, darkTheme: Boolean): androidx.compose.material3.ColorScheme {
-    if (themeColors.size < 4) {
-        return if (darkTheme) darkColorScheme() else lightColorScheme()
-    }
-
-    val background = Color(themeColors[0])
-    val primary    = Color(themeColors[1])
-    val onPrimary  = Color(themeColors[2])
-    val onSurface  = Color(themeColors[3])
-
-    // Cuando invertColors=true (modo oscuro del usuario), derivamos una paleta oscura
-    // invirtiendo la luminosidad del fondo: el chart canvas y el panel de stats
-    // mostrarán el color de fondo oscuro en lugar del beige/claro del tema.
-    val (bgFinal, onSurfaceFinal) = if (darkTheme) {
-        // Usar Surface M3 oscura real (~#1C1B1F) en lugar de negro puro para seguir
-        // las recomendaciones Material 3 de tema oscuro. La inversión cromática solo se
-        // aplica si el fondo original es muy claro (luminosidad > 0.8), para que temas
-        // ya oscuros (ej. TarNight) no se inviertan a blanco.
-        val lum = background.red * 0.2126f + background.green * 0.7152f + background.blue * 0.0722f
-        val darkBg = if (lum > 0.8f) {
-            // Fondo claro → derivar un Surface oscuro real (~#1C1B1F) con tinte del color primario
-            Color(
-                red   = 0.11f + (1f - background.red)   * 0.035f,
-                green = 0.11f + (1f - background.green) * 0.035f,
-                blue  = 0.12f + (1f - background.blue)  * 0.035f,
-                alpha = 1f,
-            )
-        } else {
-            // Fondo ya oscuro → usarlo directamente sin inversión
-            background
-        }
-        val invertedOnSurface = Color(
-            red   = (1f - onSurface.red).coerceIn(0.75f, 1f),
-            green = (1f - onSurface.green).coerceIn(0.75f, 1f),
-            blue  = (1f - onSurface.blue).coerceIn(0.75f, 1f),
-            alpha = 1f,
-        )
-        Pair(darkBg, invertedOnSurface)
-    } else {
-        Pair(background, onSurface)
-    }
-
-    // SurfaceContainer: ligeramente más oscuro/claro que Surface — para los chips de métricas.
-    // En tema claro: un poco más oscuro que el fondo (tinte del primario ~5%).
-    // En tema oscuro: un poco más claro que la Surface oscura (~#28262C) — evita negro puro.
-    val surfaceContainerFinal = if (darkTheme) {
-        Color(
-            red   = (bgFinal.red   + 0.06f).coerceAtMost(1f),
-            green = (bgFinal.green + 0.05f).coerceAtMost(1f),
-            blue  = (bgFinal.blue  + 0.06f).coerceAtMost(1f),
-            alpha = 1f,
-        )
-    } else {
-        Color(
-            red   = (bgFinal.red   - 0.04f).coerceAtLeast(0f),
-            green = (bgFinal.green - 0.04f).coerceAtLeast(0f),
-            blue  = (bgFinal.blue  - 0.04f).coerceAtLeast(0f),
-            alpha = 1f,
-        )
-    }
-    val surfaceContainerLowFinal = if (darkTheme) {
-        Color(
-            red   = (bgFinal.red   + 0.03f).coerceAtMost(1f),
-            green = (bgFinal.green + 0.025f).coerceAtMost(1f),
-            blue  = (bgFinal.blue  + 0.03f).coerceAtMost(1f),
-            alpha = 1f,
-        )
-    } else {
-        Color(
-            red   = (bgFinal.red   - 0.02f).coerceAtLeast(0f),
-            green = (bgFinal.green - 0.02f).coerceAtLeast(0f),
-            blue  = (bgFinal.blue  - 0.02f).coerceAtLeast(0f),
-            alpha = 1f,
-        )
-    }
-
-    val surface              = bgFinal
-    val primaryContainer     = primary
-    val onPrimaryContainer   = onPrimary
-    val outline              = onSurfaceFinal.copy(alpha = 0.30f)
-    val outlineVariant       = onSurfaceFinal.copy(alpha = 0.15f)
-
-    return if (darkTheme) {
-        darkColorScheme(
-            primary              = primary,
-            onPrimary            = onPrimary,
-            primaryContainer     = primaryContainer,
-            onPrimaryContainer   = onPrimaryContainer,
-            background           = bgFinal,
-            onBackground         = onSurfaceFinal,
-            surface              = surface,
-            onSurface            = onSurfaceFinal,
-            surfaceContainer     = surfaceContainerFinal,
-            surfaceContainerLow  = surfaceContainerLowFinal,
-            outline              = outline,
-            outlineVariant       = outlineVariant,
-        )
-    } else {
-        lightColorScheme(
-            primary              = primary,
-            onPrimary            = onPrimary,
-            primaryContainer     = primaryContainer,
-            onPrimaryContainer   = onPrimaryContainer,
-            background           = bgFinal,
-            onBackground         = onSurfaceFinal,
-            surface              = surface,
-            onSurface            = onSurfaceFinal,
-            surfaceContainer     = surfaceContainerFinal,
-            surfaceContainerLow  = surfaceContainerLowFinal,
-            outline              = outline,
-            outlineVariant       = outlineVariant,
-        )
-    }
 }

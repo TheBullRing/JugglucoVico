@@ -255,11 +255,24 @@ private void startdisplay() {
         // Build the native Compose menu actions — all callbacks run on the UI thread.
         final MainActivity act = this;
         final GlucoseCurve curveRef = curve;
+        // ── Fase 8: VicoMenuViewModel — se obtiene del resultado del bridge ──
+        // Las lambdas que antes abrían diálogos Java ahora llaman a
+        // menuViewModel.show(VicoMenuState.Xxx) para abrir el composable equivalente.
+        // El VicoMenuViewModel se crea dentro de createGlucoseChartView y se
+        // devuelve en el GlucoseChartViewResult para uso aquí.
+        //
+        // NOTA: la referencia final[] es necesaria porque la lambda de onSettings
+        // captura menuViewModelRef antes de que se asigne (Java no permite capturar
+        // variables no-final en lambdas).
+        final tk.glucodata.ui.menus.VicoMenuViewModel[] menuViewModelRef =
+                new tk.glucodata.ui.menus.VicoMenuViewModel[1];
+
         tk.glucodata.chart.VicoMenuActions menuActions = new tk.glucodata.chart.VicoMenuActions(
             // ── Acciones ──────────────────────────────────────────────────────
             () -> { if(!isWearable) { act.lightBars(!getInvertColors()); tk.glucodata.Watch.show(act); } },
             () -> { act.lightBars(!getInvertColors()); tk.glucodata.bluediag.start(act); },
-            () -> tk.glucodata.settings.Settings.set(act),
+            // Ajustes: abre el composable Vico en lugar del diálogo Java original
+            () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Settings.INSTANCE); else tk.glucodata.settings.Settings.set(act); },
             () -> { if(curveRef != null) curveRef.doabout(act); },
             () -> { if(curveRef != null) curveRef.dialogs.showexport(act, curveRef.getWidth(), curveRef.getHeight(), null); },
             () -> new tk.glucodata.Backup().mkbackupview(act),
@@ -292,16 +305,17 @@ private void startdisplay() {
             Applic.usePortraitPivoted(),        checked -> { Applic.setPortraitPivoted(checked); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; }
         );
 
-        android.view.View composeView = GlucoseChartViewBridgeKt.createGlucoseChartView(
+        tk.glucodata.chart.GlucoseChartViewResult chartResult = GlucoseChartViewBridgeKt.createGlucoseChartView(
                 this,
                 menuActions,
-                tk.glucodata.DynamicThemeUtils.getThemeColors(this),
                 entry -> {
                     // Long-press: open number-entry at the tapped data point.
                     Applic.RunOnUiThread(() -> curveRef.numberview.addnumberview(MainActivity.this, entry.getTimestampMs()));
                     return kotlin.Unit.INSTANCE;
                 }
         );
+        android.view.View composeView = chartResult.getComposeView();
+        menuViewModelRef[0] = chartResult.getMenuViewModel();
 
         if(!isWearable) {
             if(Build.VERSION.SDK_INT >= 30) {
@@ -583,8 +597,9 @@ if(!isWearable) {
          // Also treat stored==0 (LANDSCAPE, the C++ field default) as UNSPECIFIED so that
          // users who previously ran the old UI (which always wrote LANDSCAPE=0) can still
          // rotate freely in the Vico path. The user can fix orientation via Settings.
-         int stored = Natives.getScreenOrientation();
-         wanted = (stored == 127 || stored == 0) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : stored;
+         // stored==-1 (UNSPECIFIED) is also treated as free rotation.
+         int stored = Applic.Nativesloaded ? Natives.getScreenOrientation() : 127;
+         wanted = (stored == 127 || stored == 0 || stored == -1) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : stored;
          }
     else {
         if(!isElongated) {
@@ -629,15 +644,25 @@ if(!isWearable) {
         else
             Log.i(LOG_ID,"smaller than sdk 21") ;
 
+        // setTheme() DEBE llamarse antes de super.onCreate() para que
+        // surta efecto en la ventana y todas las vistas infladas.
+        if(Applic.DynamicTheme) {
+            if(!isWearable && Applic.useVicoChart()) {
+                // Path Vico: usar Theme.Material3.DayNight para que todos los
+                // diálogos Java hereden M3/Material You automáticamente.
+                setTheme(R.style.AppTheme_Vico);
+            } else {
+                DynamicThemeUtils.setTheme(this);
+            }
+        }
+
         if(isWearable) {
            Specific.splash(this);
          }
         super.onCreate(savedInstanceState);
         setBackPress();
 
-
        if(Applic.DynamicTheme)  {
-             DynamicThemeUtils.setTheme(this);
              isLightTheme=getIsLightTheme();
              }
 
@@ -1144,10 +1169,32 @@ protected void onStop() {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         {if(doLog) {Log.d(LOG_ID,"onWindowFocusChanged(hasFocus="+hasFocus+")");};};
-//        if (hasFocus&&hideSystem) 
+//        if (hasFocus&&hideSystem)
         if (hasFocus) {
         hideSystemUI();
         requestRender();
+        // Garantizar que systembarTop tenga valor antes de que se abra cualquier
+        // diálogo. El listener de insets del composeView es asíncrono y puede no
+        // haber disparado todavía cuando el usuario pulsa el primer botón de menú.
+        // onWindowFocusChanged es síncrono y la ventana ya tiene insets disponibles.
+        if (systembarTop == 0 && !isWearable && Build.VERSION.SDK_INT >= 30) {
+            try {
+                androidx.core.view.WindowInsetsCompat wi =
+                    ViewCompat.getRootWindowInsets(getWindow().getDecorView());
+                if (wi != null) {
+                    Insets ins = wi.getInsets(WindowInsetsCompat.Type.systemBars());
+                    if (ins.top > 0) {
+                        systembarLeft   = ins.left;
+                        systembarTop    = ins.top;
+                        systembarRight  = ins.right;
+                        systembarBottom = ins.bottom;
+                        if(rtl) { systembarStart=systembarRight; systembarEnd=systembarLeft; }
+                        else    { systembarStart=systembarLeft;  systembarEnd=systembarRight; }
+                        {if(doLog) {Log.i(LOG_ID,"onWindowFocusChanged: systembarTop="+systembarTop+" (sync read)");}}
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
             }
     }
 
@@ -2065,11 +2112,10 @@ int mirrorlistcolor=-1;
 
 public static void addMyContentView(Activity context,View view, ViewGroup.LayoutParams params) {
     context.addContentView(view,params);
-    if(Applic.DynamicTheme)
+    // En el path Vico los botones heredan el estilo M3 del tema AppTheme.Vico —
+    // applyTheme() sobreescribiría ese estilo con colores NanoVG incorrectos.
+    if(Applic.DynamicTheme && !Applic.useVicoChart())
             DynamicThemeUtils.applyTheme(view);
-    // In the Vico path (EdgeToEdge active) full-screen overlays need their own
-    // insets listener because they sit above the ComposeView window hierarchy.
-    // Only MATCH_PARENT views need this — WRAP_CONTENT popups self-position.
     if(Applic.useVicoChart()
             && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
             && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
@@ -2080,9 +2126,8 @@ public static void addMyContentView(Activity context,View view, ViewGroup.Layout
 
 public void addMyContentView(View view, ViewGroup.LayoutParams params) {
     addContentView(view,params);
-    if(Applic.DynamicTheme)
+    if(Applic.DynamicTheme && !Applic.useVicoChart())
         DynamicThemeUtils.applyTheme(view);
-    // Same insets guard as the static variant above.
     if(Applic.useVicoChart()
             && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
             && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {

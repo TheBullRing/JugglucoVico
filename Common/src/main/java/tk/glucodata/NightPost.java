@@ -421,4 +421,12 @@ public static void  config(MainActivity act, View settingsview) {
             });
     
     }
+
+ // ── Accesores públicos para el path Vico/Compose ────────────────────────────
+ /** Devuelve el timestamp (ms epoch) de la última subida. */
+ public static long getUploadTime() { return uploadtime; }
+ /** Devuelve el mensaje de estado de la última subida. */
+ public static String getUploadStatus() { return uploadstatus; }
+ /** Marca todos los datos para reenvío (equivalente al botón "Reenviar datos"). */
+ public static void clearUploadData(android.content.Context context) { askclearupload(context); }
  }
