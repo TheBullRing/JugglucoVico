@@ -1,4 +1,4 @@
-﻿<?xml version='1.0' encoding='UTF-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <resources><string name="language">uk</string>
     <string name="languagename">╨£╨╛╨▓╨░</string>
     <string name="app_name">Juggluco</string>
@@ -481,25 +481,4 @@
     <string name="notification">╨í╨┐╨╛╨▓╤û╤ë╨╡╨╜╨╜╤Å</string>
     <string name="alarmis">╨ó╨╕╨┐ ╤ü╨╕╨│╨╜╨░╨╗╤â:</string>
     <string name="deletemeter">╨Æ╨╕╨┤╨░╨╗╨╕╤é╨╕ ╨▓╤û╨┤╨╛╨╝╨╛╤ü╤é╤û ╨┐╤Ç╨╛ ╨│╨╗╤Ä╨║╨╛╨╝╨╡╤é╤Ç. ╨Æ╨╕╨╝╤û╤Ç╤Ä╨▓╨░╨╜╨╜╤Å ╨╖╨░╨╗╨╕╤ê╨░╤é╤î╤ü╤Å.</string>
-
-    <!-- Web server additions file manager -->
-    <string name="webuploadpages">╨ù╨░╨▓╨░╨╜╤é╨░╨╢╨╕╤é╨╕ ╨▓╨╡╨▒╤ü╤é╨╛╤Ç╤û╨╜╨║╨╕</string>
-    <string name="webuploadfiles">╨ù╨░╨▓╨░╨╜╤é╨░╨╢╨╕╤é╨╕ ╤ä╨░╨╣╨╗╨╕</string>
-    <string name="webuploaddirectory">╨ù╨░╨▓╨░╨╜╤é╨░╨╢╨╕╤é╨╕ ╨║╨░╤é╨░╨╗╨╛╨│</string>
-    <string name="webup">╨Æ╨│╨╛╤Ç╤â</string>
-    <string name="webcantaccessdirectory">╨¥╨╡ ╨▓╨┤╨░╨╗╨╛╤ü╤Å ╨╛╤é╤Ç╨╕╨╝╨░╤é╨╕ ╨┤╨╛╤ü╤é╤â╨┐ ╨┤╨╛ ╨║╨░╤é╨░╨╗╨╛╨│╤â %1$s</string>
-    <string name="webcantcreatedirectory">╨¥╨╡ ╨▓╨┤╨░╨╗╨╛╤ü╤Å ╤ü╤é╨▓╨╛╤Ç╨╕╤é╨╕ %1$s</string>
-    <string name="webcantopenfileselector">╨¥╨╡ ╨▓╨┤╨░╨╗╨╛╤ü╤Å ╨▓╤û╨┤╨║╤Ç╨╕╤é╨╕ ╨▓╨╕╨▒╤û╤Ç ╤ä╨░╨╣╨╗╤û╨▓</string>
-    <string name="webcantopendirectoryselector">╨¥╨╡ ╨▓╨┤╨░╨╗╨╛╤ü╤Å ╨▓╤û╨┤╨║╤Ç╨╕╤é╨╕ ╨▓╨╕╨▒╤û╤Ç ╨║╨░╤é╨░╨╗╨╛╨│╤û╨▓</string>
-    <string name="webinvaliddirectory">╨¥╨╡╨┤╤û╨╣╤ü╨╜╨╕╨╣ ╨║╨░╤é╨░╨╗╨╛╨│ %1$s</string>
-    <string name="webuploadingfiles">╨ù╨░╨▓╨░╨╜╤é╨░╨╢╨╡╨╜╨╜╤Å ╤ä╨░╨╣╨╗╤û╨▓ΓÇª</string>
-    <string name="webuploadingdirectory">╨ù╨░╨▓╨░╨╜╤é╨░╨╢╨╡╨╜╨╜╤Å ╨║╨░╤é╨░╨╗╨╛╨│╤âΓÇª</string>
-    <string name="webuploadresult">╨ù╨░╨▓╨░╨╜╤é╨░╨╢╨╡╨╜╨╛ ╤ä╨░╨╣╨╗╤û╨▓: %1$d; ╨║╨░╤é╨░╨╗╨╛╨│╤û╨▓: %2$d; ╨┐╨╛╨╝╨╕╨╗╨╛╨║: %3$d</string>
-    <string name="webdeletefilequestion">╨Æ╨╕╨┤╨░╨╗╨╕╤é╨╕ ╤ä╨░╨╣╨╗ ┬½%1$s┬╗?</string>
-    <string name="webdeletedirectoryquestion">╨Æ╨╕╨┤╨░╨╗╨╕╤é╨╕ ╨║╨░╤é╨░╨╗╨╛╨│ ┬½%1$s┬╗ ╤û ╨▓╨╡╤ü╤î ╨╣╨╛╨│╨╛ ╨▓╨╝╤û╤ü╤é?</string>
-    <string name="webdeleting">╨Æ╨╕╨┤╨░╨╗╨╡╨╜╨╜╤Å %1$sΓÇª</string>
-    <string name="webdeleted">%1$s ╨▓╨╕╨┤╨░╨╗╨╡╨╜╨╛</string>
-    <string name="webdeletefailed">╨¥╨╡ ╨▓╨┤╨░╨╗╨╛╤ü╤Å ╨▓╨╕╨┤╨░╨╗╨╕╤é╨╕ %1$s</string>
-    <string name="webdirectoryempty">╨ª╨╡╨╣ ╨║╨░╤é╨░╨╗╨╛╨│ ╨┐╨╛╤Ç╨╛╨╢╨╜╤û╨╣</string>
-    <string name="webdirectoryentry">[╨║╨░╤é╨░╨╗╨╛╨│] %1$s</string>
 </resources>

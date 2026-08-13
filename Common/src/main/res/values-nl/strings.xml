@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <string name="language">nl</string>
     <string name="languagename">Taal</string>
 
@@ -13,8 +13,8 @@
 
     <string name="error_nfc_disabled">NFC staat uit, je kunt het aanzetten in Androids Instellingen.</string>
 
-   <string name="kerfstok_missing_title">Kerfstok niet ge├»nstalleerd</string>
-    <string name="kerfstok_missing_message">Kerfstok niet ge├»nstalleerd. Je kunt het krijgen in Garmin connectiq</string>
+   <string name="kerfstok_missing_title">Kerfstok niet geïnstalleerd</string>
+    <string name="kerfstok_missing_message">Kerfstok niet geïnstalleerd. Je kunt het krijgen in Garmin connectiq</string>
 
 
     <string name="alarm_description">Te hoog of te laag glucosee</string>
@@ -117,12 +117,12 @@
  <string name="refresh">Refresh</string>
  <string name="sendqueue">Zend queue</string>
  <string name="reinit">Reinit</string>
- <string name="watchappinstalled">Horloge app ge├»nstalleerd op horloge</string>
+ <string name="watchappinstalled">Horloge app geïnstalleerd op horloge</string>
  <string name="error">Fout</string>
  <string name="additem">Component toevoegen</string>
  <string name="round">"Afronden "</string>
  <string name="repeat">Herhaal</string>
- <string name="ingredient">Ingredi├½nt: </string>
+ <string name="ingredient">Ingrediënt: </string>
  <string name="select">Selecteren</string>
  <string name="carbohydrate">Koolhydraten: </string>
  <string name="carbo">Koolhydraten</string>
@@ -130,9 +130,9 @@
  <string name="mealtotal">Maaltijd totaal: </string>
  <string name="quantity">Omvang</string>
  <string name="per">" per "</string>
- <string name="specifyingredient">Je moet een ingredi├½nt aangeven</string>
+ <string name="specifyingredient">Je moet een ingrediënt aangeven</string>
  <string name="specifyhowmuch">Je moet aangeven hoeveel</string>
- <string name="define">Defini├½ren</string>
+ <string name="define">Definiëren</string>
  <string name="edit">Wijzigen</string>
  <string name="name">Naam:</string>
  <string name="carbperunit">Koolhydraten/eenheid:</string>
@@ -169,7 +169,7 @@
  <string name="open">Open</string>
  <string name="withoutsensor">Zonder sensor</string>
  <string name="wronglibrary">Library werkt niet goed, probeer een andere</string>
- <string name="installedlibrary">Library ge├»nstalleerd</string>
+ <string name="installedlibrary">Library geïnstalleerd</string>
  <string name="cantextract">Kan %s niet uit apk halen, probeer een andere apk</string>
 <string name="connectwithsensor">Actief v. sensorverbinding</string>
 <string name="exchangedata">Actief voor dataconnectie</string>
@@ -217,7 +217,7 @@
   <string name="overlaypermission">Toestemming geven:</string>
   <string name="deletereminder">Herinnering verwijderen?</string>
   <string name="deletelabel">Label verwijderen?</string>
-  <string name="finish">Be├½indig</string>
+  <string name="finish">Beëindig</string>
   <string name="finishsensormessage">Deze sensor niet meer gebruiken voor streaming?</string> 
 
 
@@ -334,8 +334,8 @@
 <string name="glucosearrowvaluecomplicationlabel">Waarde + pijl</string>
 <string name="text">Tekst</string>
 <string name="arrow">Pijl</string>
-   <string name="notalldata">LETOP: ΓÇ£Ontvang vanΓÇ¥ niet aangevinkt, zonder alle data te zenden.</string>
-<string name="libresetalllabels">Je kunt ΓÇÿZend hoeveelhedenΓÇÖ pas aanvinken nadat je voor elk label hebt aangegeven wat ermee moet gebeuren.</string>
+   <string name="notalldata">LETOP: “Ontvang van” niet aangevinkt, zonder alle data te zenden.</string>
+<string name="libresetalllabels">Je kunt ‘Zend hoeveelheden’ pas aanvinken nadat je voor elk label hebt aangegeven wat ermee moet gebeuren.</string>
    <string name="photo">Foto</string>
 <string name="photomessage">Scan data matrix van een Dexcom G7/ONE+ of Sibionics GS1 sensor of de kloon QR code</string>
    <string name="exchanges">Deel gegevens</string>
@@ -372,7 +372,7 @@
  <string name="valuenotification">Waarde aanwezig</string>
 <string name="scantranstitle">TRANSMITTER datamatrix scannen</string>
 <string name="scantransmessage">Sibionics 2 sensor datamatrix succesvol gescand. \nScan nu de transmitter datamatrix."</string>
- <string name="mirrorscansucces">Verbinding toevoegt aan linker midden menu ΓåÆ Kloon</string>
+ <string name="mirrorscansucces">Verbinding toevoegt aan linker midden menu → Kloon</string>
  <string name="nolibrelink">Gebruik in plaats hiervan EverSense Broadcast. Zie help.</string>
  <string name="calibration">Kalibratie</string>
 <string name="exclude">Sluit uit</string>
@@ -428,7 +428,7 @@
 
 <string name="successful">geslaagd</string>
     <string name="use">Activeren</string>
-    <string name="connecttosensor">Verbinding maken met sensorΓÇª</string>
+    <string name="connecttosensor">Verbinding maken met sensor…</string>
 
 <string name="clear">Wissen</string>
 
@@ -454,7 +454,7 @@
 <string name="leave">Vertrekken?</string>
 <string name="id0message">ID moet anders zijn dan 0</string>
 <string name="emailnotused">E-mailwachtwoordcombinatie niet gebruikt en wordt niet opgeslagen.</string>
-<string name="connecttoserver">Verbinding maken met serverΓÇª</string>
+<string name="connecttoserver">Verbinding maken met server…</string>
 <string name="retrievefailed">Het ophalen van account-ID is mislukt</string>
 
 <string name="themesname">Thema\'s:</string>
@@ -467,25 +467,5 @@
 <string name="apply">Toepassen</string>
 <string name="theme">Thema</string>
 
-    <!-- Web server additions file manager -->
-    <string name="webuploadpages">WebpaginaΓÇÖs uploaden</string>
-    <string name="webuploadfiles">Bestanden uploaden</string>
-    <string name="webuploaddirectory">Map uploaden</string>
-    <string name="webup">Omhoog</string>
-    <string name="webcantaccessdirectory">Geen toegang tot map %1$s</string>
-    <string name="webcantcreatedirectory">Kan %1$s niet aanmaken</string>
-    <string name="webcantopenfileselector">Kan bestandskiezer niet openen</string>
-    <string name="webcantopendirectoryselector">Kan mapkiezer niet openen</string>
-    <string name="webinvaliddirectory">Ongeldige map %1$s</string>
-    <string name="webuploadingfiles">Bestanden worden ge├╝ploadΓÇª</string>
-    <string name="webuploadingdirectory">Map wordt ge├╝ploadΓÇª</string>
-    <string name="webuploadresult">Bestanden ge├╝pload: %1$d; mappen: %2$d; mislukt: %3$d</string>
-    <string name="webdeletefilequestion">Bestand ΓÇ₧%1$sΓÇ£ verwijderen?</string>
-    <string name="webdeletedirectoryquestion">Map ΓÇ₧%1$sΓÇ£ en alles erin verwijderen?</string>
-    <string name="webdeleting">%1$s wordt verwijderdΓÇª</string>
-    <string name="webdeleted">%1$s verwijderd</string>
-    <string name="webdeletefailed">Kan %1$s niet verwijderen</string>
-    <string name="webdirectoryempty">Deze map is leeg</string>
-    <string name="webdirectoryentry">[map] %1$s</string>
 </resources>
 

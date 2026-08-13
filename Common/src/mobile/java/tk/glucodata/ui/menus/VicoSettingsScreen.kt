@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -55,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -80,8 +82,9 @@ fun VicoSettingsScreen(
     onDismiss:    () -> Unit,
     onNavigateTo: ((VicoMenuState) -> Unit)? = null,
 ) {
-    val context  = LocalContext.current
-    val activity = context as? Activity
+    val context       = LocalContext.current
+    val activity      = context as? Activity
+    val screenHeight  = LocalConfiguration.current.screenHeightDp.dp
 
     // ── Estado local — se inicializa con los valores JNI actuales ──────────
     var unit              by remember { mutableIntStateOf(Natives.getunit()) }  // 1=mmol/L, 2=mg/dL
@@ -106,6 +109,7 @@ fun VicoSettingsScreen(
         androidx.compose.material3.Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
+            modifier = Modifier.heightIn(max = screenHeight * 0.88f),
         ) {
             Column(
                 modifier = Modifier
