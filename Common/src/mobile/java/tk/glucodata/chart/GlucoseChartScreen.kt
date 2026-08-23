@@ -29,7 +29,6 @@
 package tk.glucodata.chart
 
 import tk.glucodata.ui.menus.VicoMenuHost
-import tk.glucodata.ui.menus.VicoMenuState
 import tk.glucodata.ui.menus.VicoMenuViewModel
 import android.app.DatePickerDialog
 import android.content.res.Configuration
@@ -201,32 +200,10 @@ fun GlucoseChartScreen(
         }
 
         // ── Diálogos Compose del path Vico (Fase 8) ──────────────────────────
-        // Envuelto en GlucoseTheme para que los diálogos hereden el mismo
-        // ColorScheme que el chart y el VicoMenuSheet (Material You / M3).
+        // Todos los estados del menú tienen ahora implementación Compose nativa.
+        // VicoMenuHost despacha directamente sin delegar a overlays Java.
         GlucoseTheme(invertColors = settings.invertColors) {
-            VicoMenuHost(
-                viewModel      = menuViewModel,
-                onJavaDelegate = { state ->
-                    // Solo los estados que aún no tienen equivalente Compose llegan aquí.
-                    // About ya es Compose nativo (VicoAboutDialog) — nunca llega aquí.
-                    when (state) {
-                        is VicoMenuState.BlueSensor -> menuActions.onBlueSensor.run()
-                        is VicoMenuState.History    -> menuActions.onHistory.run()
-                        is VicoMenuState.Iob        -> menuActions.onIob.run()
-                        is VicoMenuState.SensorInfo -> { /* showsensorinfo llama Sensors.show() directamente */ }
-                        // Estos estados usan lambdas Java reales separadas (onXxxJava)
-                        // para evitar que onXxx (que llama menuViewModel.show) cause un loop.
-                        is VicoMenuState.Export     -> menuActions.onExportJava.run()
-                        is VicoMenuState.LastScan   -> menuActions.onLastScanJava.run()
-                        is VicoMenuState.Sensor     -> menuActions.onSensorJava.run()
-                        is VicoMenuState.Backup     -> menuActions.onBackupJava.run()
-                        is VicoMenuState.Talk       -> menuActions.onTalkJava.run()
-                        is VicoMenuState.Search     -> menuActions.onSearchJava.run()
-                        is VicoMenuState.DatePick   -> menuActions.onDateJava.run()
-                        else                        -> { /* resto de estados manejados por VicoMenuHost */ }
-                    }
-                },
-            )
+            VicoMenuHost(viewModel = menuViewModel)
         }
     }
 }
