@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import tk.glucodata.Natives
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,11 +76,16 @@ fun VicoNightscoutFollowerDialog(onDismiss: () -> Unit) {
     var treatments   by remember { mutableStateOf(Natives.getsaytreatments()) }
     val nightError   = remember { Natives.nightError() }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
-            modifier = Modifier.heightIn(max = screenHeight * 0.88f),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = screenHeight * 0.88f),
         ) {
             Column(
                 modifier = Modifier
@@ -225,11 +231,16 @@ fun VicoLibreViewDialog(onDismiss: () -> Unit) {
     var passVisible  by remember { mutableStateOf(false) }
     var useLibreView by remember { mutableStateOf(Natives.getuselibreview()) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
-            modifier = Modifier.heightIn(max = screenHeight * 0.88f),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = screenHeight * 0.88f),
         ) {
             Column(
                 modifier = Modifier
@@ -329,11 +340,16 @@ fun VicoCalibrationDialog(onDismiss: () -> Unit) {
     val labels: List<String> = remember { Natives.getLabels()?.toList() ?: emptyList() }
     var bloodVar    by remember { mutableIntStateOf(Natives.getbloodvar().toInt()) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
-            modifier = Modifier.heightIn(max = screenHeight * 0.88f),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = screenHeight * 0.88f),
         ) {
             Column(
                 modifier = Modifier
@@ -423,8 +439,15 @@ fun VicoStatsDialog(onDismiss: () -> Unit) {
     var days       by remember { mutableStateOf("${Natives.getAnalysedays()}") }
     var useHistory by remember { mutableStateOf(false) } // se pasa a analysedays al confirmar
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.large, tonalElevation = 6.dp) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth(0.92f),
+        ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
                     "Estadísticas",
@@ -509,11 +532,16 @@ fun VicoAlarmsDialog(onDismiss: () -> Unit) {
     val hiRange = if (unit == 1) 4f..20f  else 72f..360f
     val loRange = if (unit == 1) 2f..12f  else 36f..216f
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
-            modifier = Modifier.heightIn(max = screenHeight * 0.88f),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = screenHeight * 0.88f),
         ) {
             Column(
                 modifier = Modifier

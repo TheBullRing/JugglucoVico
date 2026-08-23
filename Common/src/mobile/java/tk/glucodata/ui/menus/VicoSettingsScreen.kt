@@ -60,6 +60,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import tk.glucodata.Applic
 import tk.glucodata.Natives
 import tk.glucodata.settings.Settings
@@ -105,11 +106,16 @@ fun VicoSettingsScreen(
     val cameraKey = remember { if (!tk.glucodata.Applic.isWearable) Natives.camerakey() else 0 }
     var cameraKeyEnabled by remember { mutableStateOf(cameraKey == 1) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         androidx.compose.material3.Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
-            modifier = Modifier.heightIn(max = screenHeight * 0.88f),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = screenHeight * 0.88f),
         ) {
             Column(
                 modifier = Modifier

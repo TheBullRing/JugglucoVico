@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import tk.glucodata.NightPost
 import tk.glucodata.Natives
 import java.text.SimpleDateFormat
@@ -67,10 +68,14 @@ fun VicoDataExchangeMenu(
     onLibreView:          () -> Unit,
     onDismiss:            () -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
-            shape         = MaterialTheme.shapes.large,
+            shape          = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
+            modifier       = Modifier.fillMaxWidth(0.92f),
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
@@ -149,10 +154,14 @@ fun VicoNightscoutUploaderDialog(onDismiss: () -> Unit) {
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
             shape          = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
+            modifier       = Modifier.fillMaxWidth(0.92f),
         ) {
             Column(
                 modifier = Modifier
