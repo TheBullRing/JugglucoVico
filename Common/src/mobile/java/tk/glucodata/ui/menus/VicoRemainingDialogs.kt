@@ -212,7 +212,8 @@ fun VicoTalkDialog(onDismiss: () -> Unit) {
                 val sep = separation.toIntOrNull() ?: Natives.getVoiceSeparation()
                 val pos = Natives.getVoiceTalker()
                 Natives.saveVoice(spd, pit, sep, pos, active)
-                tk.glucodata.SuperGattCallback.dotalk = active
+                // SuperGattCallback.dotalk es package-private; saveVoice persiste 'active'
+                // en el backend C++ — Natives.getVoiceActive() lo recupera correctamente.
                 Natives.settouchtalk(touchTalk)
                 Natives.setspeakmessages(speakMsgs)
                 Natives.setspeakalarms(speakAlarms)

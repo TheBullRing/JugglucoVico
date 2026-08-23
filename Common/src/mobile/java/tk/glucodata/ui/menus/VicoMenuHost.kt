@@ -4,15 +4,11 @@
  * VicoMenuHost: composable que observa el VicoMenuState actual y
  * despacha al diálogo/pantalla correspondiente.
  *
- * Compose nativos: Settings, NightscoutUploader, DataExchange, NightscoutFollower,
- *   LibreView, Calibration, Stats, Alarms, Watch, NumberEntry, Meal, About.
- * Delegados a Java vía onJavaDelegate: BlueSensor, History, SensorInfo, Iob,
- *   Export, LastScan, Sensor, Backup, Talk, Search, DatePick.
+ * Todos los estados tienen diálogo Compose nativo.
  */
 package tk.glucodata.ui.menus
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -20,9 +16,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  * Composable que observa [VicoMenuViewModel.state] y renderiza el diálogo
  * o pantalla Compose correspondiente.
  *
- * @param viewModel       ViewModel del menú Vico.
- * @param onJavaDelegate  Llamado únicamente para M8/History, M10/SensorInfo
- *                        e Iob (aún no migrados a Compose).
+ * Todos los estados del menú tienen implementación Compose nativa.
+ *
+ * @param viewModel         ViewModel del menú Vico.
+ * @param onJavaDelegate    Mantenido para compatibilidad de firma; ya no se invoca.
  */
 @Composable
 fun VicoMenuHost(
@@ -32,18 +29,18 @@ fun VicoMenuHost(
     val menuState by viewModel.state.collectAsStateWithLifecycle()
 
     when (menuState) {
-        // M4 — Ajustes
+        // ── M4 — Ajustes ───────────────────────────────────────────────────
         is VicoMenuState.Settings ->
             VicoSettingsScreen(
                 onDismiss    = { viewModel.dismiss() },
                 onNavigateTo = { viewModel.show(it) },
             )
 
-        // M12a — Cargador Nightscout
+        // ── M12a — Cargador Nightscout ─────────────────────────────────────
         is VicoMenuState.NightscoutUploader ->
             VicoNightscoutUploaderDialog(onDismiss = { viewModel.dismiss() })
 
-        // Sub-menú Intercambiar datos
+        // ── Sub-menú Intercambiar datos ────────────────────────────────────
         is VicoMenuState.DataExchange ->
             VicoDataExchangeMenu(
                 onNightscoutUploader = { viewModel.show(VicoMenuState.NightscoutUploader) },
@@ -52,74 +49,91 @@ fun VicoMenuHost(
                 onDismiss            = { viewModel.show(VicoMenuState.Settings) },
             )
 
-        // M12b — Seguidor Nightscout (servidor Xdrip local)
+        // ── M12b — Seguidor Nightscout ─────────────────────────────────────
         is VicoMenuState.NightscoutFollower ->
             VicoNightscoutFollowerDialog(onDismiss = { viewModel.show(VicoMenuState.DataExchange) })
 
-        // M12c — LibreView
+        // ── M12c — LibreView ───────────────────────────────────────────────
         is VicoMenuState.LibreView ->
             VicoLibreViewDialog(onDismiss = { viewModel.show(VicoMenuState.DataExchange) })
 
-        // M3 — Calibración
+        // ── M3 — Calibración ───────────────────────────────────────────────
         is VicoMenuState.Calibration ->
             VicoCalibrationDialog(onDismiss = { viewModel.show(VicoMenuState.Settings) })
 
-        // M5 — Estadísticas
+        // ── M5 — Estadísticas ──────────────────────────────────────────────
         is VicoMenuState.Stats ->
             VicoStatsDialog(onDismiss = { viewModel.dismiss() })
 
-        // M11 — Alarmas
+        // ── M11 — Alarmas ──────────────────────────────────────────────────
         is VicoMenuState.Alarms ->
             VicoAlarmsDialog(onDismiss = { viewModel.show(VicoMenuState.Settings) })
 
-        // M6/Watch — Conectividad de relojes y gadgets (NATIVO COMPOSE)
+        // ── M6/Watch — Relojes y gadgets (COMPOSE NATIVO) ─────────────────
         is VicoMenuState.Watch ->
             VicoWatchDialog(
                 onDismiss         = { viewModel.dismiss() },
-                onConfigureWearOS = { /* Wearos.show() requiere contexto Java; por ahora dismiss */ viewModel.dismiss() },
+                onConfigureWearOS = { viewModel.dismiss() },
                 onConfigureServer = { viewModel.show(VicoMenuState.NightscoutFollower) },
             )
 
-        // M7/NumberEntry — Entrada manual de glucosa (NATIVO COMPOSE)
+        // ── M7/NumberEntry — Entrada manual de glucosa (COMPOSE NATIVO) ───
         is VicoMenuState.NumberEntry ->
             VicoNumberEntryDialog(onDismiss = { viewModel.dismiss() })
 
-        // M13/Meal — Registro de comida simplificado (NATIVO COMPOSE)
+        // ── M13/Meal — Registro de comida (COMPOSE NATIVO) ────────────────
         is VicoMenuState.Meal ->
             VicoMealSimpleDialog(onDismiss = { viewModel.dismiss() })
 
-        // About — diálogo Compose nativo de información de versión
+        // ── About — Información de versión (COMPOSE NATIVO) ───────────────
         is VicoMenuState.About ->
             VicoAboutDialog(onDismiss = { viewModel.dismiss() })
 
-        // Los siguientes estados no tienen diálogo Compose nativo:
-        //  - Export:   ACTION_CREATE_DOCUMENT requiere onActivityResult (overlay Java).
-        //  - Sensor:   bluediag.start() abre una Activity BLE (no Compose).
-        //  - Backup:   Backup.mkbackupview() usa un overlay View complejo.
-        //  - Talk:     Talker.config() abre su propia UI Android.
-        //  - Search:   curveRef.startsearch() abre un diálogo View existente.
-        //  - DatePick: curveRef.startdatepick() abre DatePickerDialog.
-        //  - LastScan: Natives.showlastscan() emite un overlay View.
-        //  - BlueSensor, History, SensorInfo, Iob: overlays Java complejos.
-        // LaunchedEffect garantiza que la llamada ocurre una sola vez por cambio de estado.
-        is VicoMenuState.BlueSensor,
-        is VicoMenuState.History,
-        is VicoMenuState.SensorInfo,
-        is VicoMenuState.Iob,
-        is VicoMenuState.Export,
-        is VicoMenuState.LastScan,
-        is VicoMenuState.Sensor,
-        is VicoMenuState.Backup,
-        is VicoMenuState.Talk,
-        is VicoMenuState.Search,
-        is VicoMenuState.DatePick -> {
-            val capturedState = menuState
-            LaunchedEffect(capturedState) {
-                onJavaDelegate(capturedState)
-                viewModel.dismiss()
-            }
-        }
+        // ── M14/IOB — Insulina activa (COMPOSE NATIVO) ────────────────────
+        is VicoMenuState.Iob ->
+            VicoIobDialog(onDismiss = { viewModel.dismiss() })
 
-        is VicoMenuState.None -> { /* Sin diálogo activo */ }
+        // ── Hablar / TTS (COMPOSE NATIVO) ─────────────────────────────────
+        is VicoMenuState.Talk ->
+            VicoTalkDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── Selector de fecha (COMPOSE NATIVO) ────────────────────────────
+        is VicoMenuState.DatePick ->
+            VicoDatePickDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── Buscar en el gráfico (COMPOSE NATIVO) ─────────────────────────
+        is VicoMenuState.Search ->
+            VicoSearchDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── Último escaneo NFC (COMPOSE NATIVO) ───────────────────────────
+        is VicoMenuState.LastScan ->
+            VicoLastScanDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── Exportar datos (COMPOSE NATIVO — ACTION_CREATE_DOCUMENT) ──────
+        is VicoMenuState.Export ->
+            VicoExportDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── Clon / Backup (COMPOSE NATIVO) ────────────────────────────────
+        is VicoMenuState.Backup ->
+            VicoBackupDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── Sensor BLE (COMPOSE NATIVO) ───────────────────────────────────
+        is VicoMenuState.Sensor ->
+            VicoSensorDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── Historial / Lista (COMPOSE NATIVO) ────────────────────────────
+        is VicoMenuState.History ->
+            VicoHistoryDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── BlueSensor — mismo diálogo que Sensor ─────────────────────────
+        is VicoMenuState.BlueSensor ->
+            VicoSensorDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── SensorInfo — mismo diálogo que Sensor ─────────────────────────
+        is VicoMenuState.SensorInfo ->
+            VicoSensorDialog(onDismiss = { viewModel.dismiss() })
+
+        // ── None — sin diálogo activo ──────────────────────────────────────
+        is VicoMenuState.None -> { /* sin diálogo */ }
     }
 }
