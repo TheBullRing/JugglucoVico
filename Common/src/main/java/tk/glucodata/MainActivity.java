@@ -269,7 +269,8 @@ private void startdisplay() {
 
         tk.glucodata.chart.VicoMenuActions menuActions = new tk.glucodata.chart.VicoMenuActions(
             // ── Acciones ──────────────────────────────────────────────────────
-            () -> { if(!isWearable) { act.lightBars(!getInvertColors()); tk.glucodata.Watch.show(act); } },
+            // onWatch: abre el diálogo Compose de Relojes en lugar del overlay Java
+            () -> { if(!isWearable && menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Watch.INSTANCE); },
             () -> { act.lightBars(!getInvertColors()); tk.glucodata.bluediag.start(act); },
             // Ajustes: abre el composable Vico en lugar del diálogo Java original
             () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Settings.INSTANCE); else tk.glucodata.settings.Settings.set(act); },
@@ -303,11 +304,15 @@ private void startdisplay() {
             getInvertColors(),                  checked -> { Natives.setInvertColors(checked);            tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
             Natives.getfloatglucose(),          checked -> { tk.glucodata.Floating.setfloatglucose(act, checked); return kotlin.Unit.INSTANCE; },
             Applic.usePortraitPivoted(),        checked -> { Applic.setPortraitPivoted(checked); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
-            // ── Delegadas a código Java (M6/M7/M8/M13/M14) ─────────────────────
+            // ── onBlueSensor — sigue delegando a Java (bluediag.start) ──────────
             () -> { act.lightBars(!getInvertColors()); tk.glucodata.bluediag.start(act); },
-            () -> { if(!Natives.staticnum()) { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.numberview.addnumberview(act); } } },
+            // ── onNumberEntry — abre el diálogo Compose de entrada de glucosa ───
+            () -> { if(!Natives.staticnum() && menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.NumberEntry.INSTANCE); },
+            // ── onHistory — sigue delegando a Java (makenumbers / getnumcontrol) ─
             () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); Natives.makenumbers(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); curveRef.getnumcontrol(act); } },
-            () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.numberview.addnumberwithmenu(act, -1 /* nueva comida */); } },
+            // ── onMeal — abre el diálogo Compose de comida simplificado ──────────
+            () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Meal.INSTANCE); },
+            // ── onIob — sigue delegando a Java (IOB.mkview) ──────────────────────
             () -> { act.lightBars(!getInvertColors()); tk.glucodata.IOB.mkview(act); }
         );
 

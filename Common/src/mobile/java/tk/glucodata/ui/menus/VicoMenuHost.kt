@@ -4,11 +4,9 @@
  * VicoMenuHost: composable que observa el VicoMenuState actual y
  * despacha al diálogo/pantalla correspondiente.
  *
- * Para los estados que delegan en código Java existente (BlueSensor, Meal,
- * History, NumberEntry, SensorInfo, Iob), se invoca [onJavaDelegate] con el
- * estado correspondiente y luego se hace dismiss automático para limpiar el
- * VicoMenuState.  El código Java que muestra la vista View real lo invoca
- * la Activity desde dentro del lambda de [onJavaDelegate].
+ * Todos los estados se despachan a diálogos Compose nativos.
+ * Solo M8 (History), M10 (SensorInfo) e Iob siguen delegando en Java
+ * porque su implementación es compleja (RecyclerView, lógica JNI específica).
  */
 package tk.glucodata.ui.menus
 
@@ -22,11 +20,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  * o pantalla Compose correspondiente.
  *
  * @param viewModel       ViewModel del menú Vico.
- * @param onJavaDelegate  Llamado cuando el estado activo corresponde a un diálogo
- *                        que se implementa con código Java/View (M6, M7, M8, M10,
- *                        M13, M14).  La Activity implementa este callback abriendo
- *                        el diálogo Java apropiado.  El host hace dismiss del estado
- *                        Vico inmediatamente tras la llamada.
+ * @param onJavaDelegate  Llamado únicamente para M8/History, M10/SensorInfo
+ *                        e Iob (aún no migrados a Compose).
  */
 @Composable
 fun VicoMenuHost(
@@ -76,13 +71,27 @@ fun VicoMenuHost(
         is VicoMenuState.Alarms ->
             VicoAlarmsDialog(onDismiss = { viewModel.show(VicoMenuState.Settings) })
 
-        // M6, M7, M8, M10, M13, M14 — Delegación en código Java de la Activity.
-        // LaunchedEffect garantiza que la llamada al delegado ocurre una sola vez
-        // por cambio de estado (no se re-ejecuta en cada recomposición).
+        // M6/Watch — Conectividad de relojes y gadgets (NATIVO COMPOSE)
+        is VicoMenuState.Watch ->
+            VicoWatchDialog(
+                onDismiss         = { viewModel.dismiss() },
+                onConfigureWearOS = { /* Wearos.show() requiere contexto Java; por ahora dismiss */ viewModel.dismiss() },
+                onConfigureServer = { viewModel.show(VicoMenuState.NightscoutFollower) },
+            )
+
+        // M7/NumberEntry — Entrada manual de glucosa (NATIVO COMPOSE)
+        is VicoMenuState.NumberEntry ->
+            VicoNumberEntryDialog(onDismiss = { viewModel.dismiss() })
+
+        // M13/Meal — Registro de comida simplificado (NATIVO COMPOSE)
+        is VicoMenuState.Meal ->
+            VicoMealSimpleDialog(onDismiss = { viewModel.dismiss() })
+
+        // M6/BlueSensor — Sensor Bluetooth sigue delegando a Java (bluediag.start)
+        // M8/History, M10/SensorInfo, M14/Iob — Delegación en código Java de la Activity.
+        // LaunchedEffect garantiza que la llamada ocurre una sola vez por cambio de estado.
         is VicoMenuState.BlueSensor,
-        is VicoMenuState.Meal,
         is VicoMenuState.History,
-        is VicoMenuState.NumberEntry,
         is VicoMenuState.SensorInfo,
         is VicoMenuState.Iob -> {
             val capturedState = menuState

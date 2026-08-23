@@ -42,6 +42,9 @@ sealed class VicoMenuState {
     /** M6 — Sensor Bluetooth. */
     object BlueSensor : VicoMenuState()
 
+    /** M6/Watch — Conectividad de relojes y gadgets (Watch.show()). */
+    object Watch : VicoMenuState()
+
     /** M3 — Calibración (entrada de glucosa capilar). */
     object Calibration : VicoMenuState()
 

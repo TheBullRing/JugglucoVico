@@ -207,15 +207,14 @@ fun GlucoseChartScreen(
             VicoMenuHost(
                 viewModel      = menuViewModel,
                 onJavaDelegate = { state ->
-                    // Delegar en los callbacks Java de menuActions según el estado.
+                    // Solo los estados que aún no tienen equivalente Compose llegan aquí.
+                    // Watch / NumberEntry / Meal ya se gestionan en VicoMenuHost como Compose.
                     when (state) {
-                        is VicoMenuState.BlueSensor  -> menuActions.onBlueSensor.run()
-                        is VicoMenuState.NumberEntry -> menuActions.onNumberEntry.run()
-                        is VicoMenuState.History     -> menuActions.onHistory.run()
-                        is VicoMenuState.Meal        -> menuActions.onMeal.run()
-                        is VicoMenuState.Iob         -> menuActions.onIob.run()
-                        is VicoMenuState.SensorInfo  -> { /* showsensorinfo ya llama Sensors.show() directamente desde GlucoseCurve */ }
-                        else                         -> { /* resto de estados manejados por VicoMenuHost */ }
+                        is VicoMenuState.BlueSensor -> menuActions.onBlueSensor.run()
+                        is VicoMenuState.History    -> menuActions.onHistory.run()
+                        is VicoMenuState.Iob        -> menuActions.onIob.run()
+                        is VicoMenuState.SensorInfo -> { /* showsensorinfo llama Sensors.show() directamente */ }
+                        else                        -> { /* resto de estados manejados por VicoMenuHost */ }
                     }
                 },
             )

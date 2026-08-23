@@ -121,8 +121,9 @@ static public final boolean isRelease= BuildConfig.isRelease==1;
  * Default: true (Vico). Toggling via Settings calls activity.recreate() so
  * startdisplay() picks up the new value immediately.
  */
-private static final String PREF_FILE   = "juggluco_ui";
-private static final String PREF_VICO   = "use_vico_chart";
+private static final String PREF_FILE          = "juggluco_ui";
+private static final String PREF_VICO           = "use_vico_chart";
+private static final String PREF_PORTRAIT_PIVOT = "portrait_pivoted";
 
 public static boolean useVicoChart() {
     if (app == null) return true; // safe default before Application.onCreate()
@@ -134,6 +135,19 @@ public static void setUseVicoChart(boolean value) {
     if (app == null) return;
     app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
        .edit().putBoolean(PREF_VICO, value).apply();
+}
+
+/** true = gráfico portrait pivotado (Y=tiempo); false = tradicional (X=tiempo). */
+public static boolean usePortraitPivoted() {
+    if (app == null) return true;
+    return app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+              .getBoolean(PREF_PORTRAIT_PIVOT, true);
+}
+
+public static void setPortraitPivoted(boolean value) {
+    if (app == null) return;
+    app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+       .edit().putBoolean(PREF_PORTRAIT_PIVOT, value).apply();
 }
 
 static final String JUGGLUCOIDENT=isWearable?"juggluco":"jugglucowatch";
@@ -222,6 +236,16 @@ void setnotify(boolean on) {
     Notify.alertwatch=on;
     {if(doLog) {Log.i(LOG_ID,"setnotify="+on);};};
     }
+/** Devuelve si las notificaciones al reloj están activas. Acceso público para Compose. */
+public boolean getnotify() {
+    return Notify.alertwatch;
+    }
+/** Activa/desactiva notificaciones al reloj. Wrapper público para Compose. */
+public void setnotifyPublic(boolean on) {
+    setnotify(on);
+    }
+/** Constante de conversión mg/dL. Acceso público para Compose. */
+public static final float mgdLmultPublic = mgdLmult;
 public void setunit(int unit)  {
      if(Applic.unit!=unit)
         SuperGattCallback.previousglucosevalue=0.0f;
