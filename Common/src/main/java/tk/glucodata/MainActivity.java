@@ -271,14 +271,15 @@ private void startdisplay() {
             // ── Acciones ──────────────────────────────────────────────────────
             // onWatch: abre el diálogo Compose de Relojes en lugar del overlay Java
             () -> { if(!isWearable && menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Watch.INSTANCE); },
+            // onSensor: acción Java real — el sheet la llama vía menuViewModel.show(Sensor) → onJavaDelegate
             () -> { act.lightBars(!getInvertColors()); tk.glucodata.bluediag.start(act); },
             // Ajustes: abre el composable Vico en lugar del diálogo Java original
             () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Settings.INSTANCE); else tk.glucodata.settings.Settings.set(act); },
             // onAbout: abre el diálogo Compose de información de versión
             () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.About.INSTANCE); else GlucoseCurve.doabout(act); },
-            // onExport: abre el overlay Java de exportación (ACTION_CREATE_DOCUMENT requiere onActivityResult)
-            // Dimensiones 0×0 son válidas: showexport() usa GlucoseCurve.getwidth(activity) internamente
+            // onExport: acción Java real — el sheet la llama vía menuViewModel.show(Export) → onJavaDelegate
             () -> { curveRef.dialogs.showexport(act, 0, 0, null); },
+            // onMirror/Clon: acción Java real — el sheet la llama vía menuViewModel.show(Backup) → onJavaDelegate
             () -> new tk.glucodata.Backup().mkbackupview(act),
             () -> act.moveTaskToBack(true),
             // ── Datos ──────────────────────────────────────────────────────────
@@ -288,11 +289,14 @@ private void startdisplay() {
             () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.History.INSTANCE); else if(curveRef != null) { act.lightBars(!getInvertColors()); Natives.makenumbers(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); curveRef.getnumcontrol(act); } },
             // onStatistics: abre el diálogo Compose de estadísticas
             () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Stats.INSTANCE); else if(Natives.makepercentages()) { act.lightBars(!getInvertColors()); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); tk.glucodata.Stats.mkstats(act); } },
-            () -> tk.glucodata.Talker.config(act),
-            // onLastScan: muestra el último resultado de escaneo NFC (overlay Java)
+            // onTalk: acción Java real — el sheet la llama vía menuViewModel.show(Talk) → onJavaDelegate
+            () -> { act.lightBars(!getInvertColors()); tk.glucodata.Talker.config(act); },
+            // onLastScan: acción Java real — el sheet la llama vía menuViewModel.show(LastScan) → onJavaDelegate
             () -> { if(Natives.showlastscan()) { act.lightBars(!getInvertColors()); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); } },
             () -> { act.lightBars(!getInvertColors()); Natives.settonow(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
+            // onSearch: acción Java real — el sheet la llama vía menuViewModel.show(Search) → onJavaDelegate
             () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.startsearch(); } },
+            // onDate: acción Java real — el sheet la llama vía menuViewModel.show(DatePick) → onJavaDelegate
             () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.startdatepick(Natives.getstarttime()); } },
             () -> { act.lightBars(!getInvertColors()); Natives.prevday(1); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
             () -> { act.lightBars(!getInvertColors()); Natives.nextday(1); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },

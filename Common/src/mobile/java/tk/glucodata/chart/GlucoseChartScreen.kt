@@ -216,6 +216,11 @@ fun GlucoseChartScreen(
                         is VicoMenuState.SensorInfo -> { /* showsensorinfo llama Sensors.show() directamente */ }
                         is VicoMenuState.Export     -> menuActions.onExport.run()
                         is VicoMenuState.LastScan   -> menuActions.onLastScan.run()
+                        is VicoMenuState.Sensor     -> menuActions.onSensor.run()
+                        is VicoMenuState.Backup     -> menuActions.onMirror.run()
+                        is VicoMenuState.Talk       -> menuActions.onTalk.run()
+                        is VicoMenuState.Search     -> menuActions.onSearch.run()
+                        is VicoMenuState.DatePick   -> menuActions.onDate.run()
                         else                        -> { /* resto de estados manejados por VicoMenuHost */ }
                     }
                 },

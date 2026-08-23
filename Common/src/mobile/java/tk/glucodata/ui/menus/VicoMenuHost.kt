@@ -4,9 +4,10 @@
  * VicoMenuHost: composable que observa el VicoMenuState actual y
  * despacha al diálogo/pantalla correspondiente.
  *
- * Todos los estados se despachan a diálogos Compose nativos.
- * Solo M8 (History), M10 (SensorInfo) e Iob siguen delegando en Java
- * porque su implementación es compleja (RecyclerView, lógica JNI específica).
+ * Compose nativos: Settings, NightscoutUploader, DataExchange, NightscoutFollower,
+ *   LibreView, Calibration, Stats, Alarms, Watch, NumberEntry, Meal, About.
+ * Delegados a Java vía onJavaDelegate: BlueSensor, History, SensorInfo, Iob,
+ *   Export, LastScan, Sensor, Backup, Talk, Search, DatePick.
  */
 package tk.glucodata.ui.menus
 
@@ -91,16 +92,27 @@ fun VicoMenuHost(
         is VicoMenuState.About ->
             VicoAboutDialog(onDismiss = { viewModel.dismiss() })
 
-        // Export — el file picker del sistema requiere onActivityResult;
-        // sigue delegando al overlay Java existente (Dialogs.showexport).
-        // BlueSensor, History, SensorInfo, Iob, LastScan — Delegación en código Java de la Activity.
+        // Los siguientes estados no tienen diálogo Compose nativo:
+        //  - Export:   ACTION_CREATE_DOCUMENT requiere onActivityResult (overlay Java).
+        //  - Sensor:   bluediag.start() abre una Activity BLE (no Compose).
+        //  - Backup:   Backup.mkbackupview() usa un overlay View complejo.
+        //  - Talk:     Talker.config() abre su propia UI Android.
+        //  - Search:   curveRef.startsearch() abre un diálogo View existente.
+        //  - DatePick: curveRef.startdatepick() abre DatePickerDialog.
+        //  - LastScan: Natives.showlastscan() emite un overlay View.
+        //  - BlueSensor, History, SensorInfo, Iob: overlays Java complejos.
         // LaunchedEffect garantiza que la llamada ocurre una sola vez por cambio de estado.
         is VicoMenuState.BlueSensor,
         is VicoMenuState.History,
         is VicoMenuState.SensorInfo,
         is VicoMenuState.Iob,
         is VicoMenuState.Export,
-        is VicoMenuState.LastScan -> {
+        is VicoMenuState.LastScan,
+        is VicoMenuState.Sensor,
+        is VicoMenuState.Backup,
+        is VicoMenuState.Talk,
+        is VicoMenuState.Search,
+        is VicoMenuState.DatePick -> {
             val capturedState = menuState
             LaunchedEffect(capturedState) {
                 onJavaDelegate(capturedState)

@@ -80,6 +80,21 @@ sealed class VicoMenuState {
 
     /** Último escaneo NFC — muestra el resultado del último scan. */
     object LastScan : VicoMenuState()
+
+    /** Sensor — selección de sensor Bluetooth (bluediag.start). */
+    object Sensor : VicoMenuState()
+
+    /** Clon / Backup — copia de seguridad (Backup.mkbackupview). */
+    object Backup : VicoMenuState()
+
+    /** Hablar — configuración de TTS (Talker.config). */
+    object Talk : VicoMenuState()
+
+    /** Buscar — buscar datos en el gráfico (curveRef.startsearch). */
+    object Search : VicoMenuState()
+
+    /** Fecha — selector de fecha para el gráfico (curveRef.startdatepick). */
+    object DatePick : VicoMenuState()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
