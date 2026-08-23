@@ -94,6 +94,20 @@ data class VicoMenuActions(
     val onGlucoseFloatChange:    (Boolean) -> Unit,
     val portraitPivoted:         Boolean,
     val onPortraitPivotedChange: (Boolean) -> Unit,
+    // ── Acciones delegadas a código Java (M6/M7/M8/M13/M14) ─────────────────
+    // Estos campos tienen valor por defecto no-op para compatibilidad con código
+    // que construya VicoMenuActions sin especificarlos (tests, previews, etc.).
+    // En producción (MainActivity), siempre se pasa la lambda correcta.
+    /** M6 — Abre el diálogo de selección de sensor Bluetooth (bluediag.start). */
+    val onBlueSensor:  VicoMenuAction = VicoMenuAction {},
+    /** M7 — Abre la entrada manual de número/etiqueta (numberview.addnumberview). */
+    val onNumberEntry: VicoMenuAction = VicoMenuAction {},
+    /** M8 — Abre la lista/historial de datos (getnumcontrol). */
+    val onHistory:     VicoMenuAction = VicoMenuAction {},
+    /** M13 — Abre el registro de comidas (Meal / addnumberwithmenu). */
+    val onMeal:        VicoMenuAction = VicoMenuAction {},
+    /** M14 — Abre la entrada de insulina activa (IOB.mkview). */
+    val onIob:         VicoMenuAction = VicoMenuAction {},
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,13 +242,15 @@ private fun DatosTab(a: VicoMenuActions, onDismiss: () -> Unit) {
     Column {
         TwoColumnGrid(listOf(
             "Nueva cantidad" to { onDismiss(); a.onNewAmount.run() },
-            "Lista"          to { onDismiss(); a.onList.run() },
+            "Lista"          to { onDismiss(); a.onHistory.run() },
             "Estadísticas"   to { onDismiss(); a.onStatistics.run() },
             "Hablar"         to { onDismiss(); a.onTalk.run() },
             "Último escaneo" to { onDismiss(); a.onLastScan.run() },
             "Ahora"          to { onDismiss(); a.onNow.run() },
             "Buscar"         to { onDismiss(); a.onSearch.run() },
             "Fecha"          to { onDismiss(); a.onDate.run() },
+            "Comida"         to { onDismiss(); a.onMeal.run() },
+            "IOB"            to { onDismiss(); a.onIob.run() },
         ))
         Spacer(Modifier.height(8.dp))
         SectionLabel("Navegar por fechas")

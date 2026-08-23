@@ -63,6 +63,9 @@ sealed class VicoMenuState {
     /** M10 — Información del sensor (callback showsensorinfo). */
     object SensorInfo : VicoMenuState()
 
+    /** M14 — Entrada de insulina activa (IOB). */
+    object Iob : VicoMenuState()
+
     /** Sub-menú de intercambio de datos (desde Settings → Intercambiar datos). */
     object DataExchange : VicoMenuState()
 }

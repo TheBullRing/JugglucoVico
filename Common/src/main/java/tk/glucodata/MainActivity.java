@@ -302,7 +302,13 @@ private void startdisplay() {
             Natives.getshowmeals(),             checked -> { Natives.setshowmeals(checked);               tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
             getInvertColors(),                  checked -> { Natives.setInvertColors(checked);            tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
             Natives.getfloatglucose(),          checked -> { tk.glucodata.Floating.setfloatglucose(act, checked); return kotlin.Unit.INSTANCE; },
-            Applic.usePortraitPivoted(),        checked -> { Applic.setPortraitPivoted(checked); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; }
+            Applic.usePortraitPivoted(),        checked -> { Applic.setPortraitPivoted(checked); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); return kotlin.Unit.INSTANCE; },
+            // ── Delegadas a código Java (M6/M7/M8/M13/M14) ─────────────────────
+            () -> { act.lightBars(!getInvertColors()); tk.glucodata.bluediag.start(act); },
+            () -> { if(!Natives.staticnum()) { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.numberview.addnumberview(act); } } },
+            () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); Natives.makenumbers(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); curveRef.getnumcontrol(act); } },
+            () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.numberview.addnumberwithmenu(act, -1 /* nueva comida */); } },
+            () -> { act.lightBars(!getInvertColors()); tk.glucodata.IOB.mkview(act); }
         );
 
         tk.glucodata.chart.GlucoseChartViewResult chartResult = GlucoseChartViewBridgeKt.createGlucoseChartView(

@@ -29,6 +29,7 @@
 package tk.glucodata.chart
 
 import tk.glucodata.ui.menus.VicoMenuHost
+import tk.glucodata.ui.menus.VicoMenuState
 import tk.glucodata.ui.menus.VicoMenuViewModel
 import android.app.DatePickerDialog
 import android.content.res.Configuration
@@ -203,7 +204,21 @@ fun GlucoseChartScreen(
         // Envuelto en GlucoseTheme para que los diálogos hereden el mismo
         // ColorScheme que el chart y el VicoMenuSheet (Material You / M3).
         GlucoseTheme(invertColors = settings.invertColors) {
-            VicoMenuHost(viewModel = menuViewModel)
+            VicoMenuHost(
+                viewModel      = menuViewModel,
+                onJavaDelegate = { state ->
+                    // Delegar en los callbacks Java de menuActions según el estado.
+                    when (state) {
+                        is VicoMenuState.BlueSensor  -> menuActions.onBlueSensor.run()
+                        is VicoMenuState.NumberEntry -> menuActions.onNumberEntry.run()
+                        is VicoMenuState.History     -> menuActions.onHistory.run()
+                        is VicoMenuState.Meal        -> menuActions.onMeal.run()
+                        is VicoMenuState.Iob         -> menuActions.onIob.run()
+                        is VicoMenuState.SensorInfo  -> { /* showsensorinfo ya llama Sensors.show() directamente desde GlucoseCurve */ }
+                        else                         -> { /* resto de estados manejados por VicoMenuHost */ }
+                    }
+                },
+            )
         }
     }
 }
