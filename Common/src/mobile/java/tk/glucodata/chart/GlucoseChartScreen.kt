@@ -594,12 +594,13 @@ private fun PortraitLayout(
     Column(modifier = Modifier.fillMaxSize()) {
 
         // ── [a] Sección 1: Velocímetro ────────────────────────────────────────
-        // Box permite superponer el botón de menú en la esquina superior derecha
-        // sin añadir una barra extra que robe espacio vertical.
+        // weight(0.35f): el gauge tiene aspectRatio(1.6) propio, pero el Box
+        // padre necesita un peso para que la Column divida el espacio sobrante
+        // entre gauge y gráfica.  El gauge se encoge al contenido con wrapContentHeight.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.33f),
+                .weight(0.35f),
         ) {
             GlucoseGauge(
                 currentMgdL  = glucoseData.latestMgdL,
@@ -638,7 +639,7 @@ private fun PortraitLayout(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.45f)
+                .weight(0.65f)
                 .background(MaterialTheme.colorScheme.surface),
         ) {
             if (settings.portraitPivoted) {
@@ -665,15 +666,15 @@ private fun PortraitLayout(
         }
 
         // ── [c] Sección 3: Chips TIR / GMI / CV% / Predicción ────────────────
-        Box(modifier = Modifier.fillMaxWidth().weight(0.22f)) {
-            StatsPanelWithDirection(
-                entries     = entries,
-                settings    = settings,
-                modifier    = Modifier.fillMaxSize(),
-                isLandscape = false,
-                chipsOnly   = true,
-            )
-        }
+        // wrapContentHeight: la sección toma exactamente la altura que necesitan
+        // los chips, sin recortarlos ni dejar espacio vacío.
+        StatsPanelWithDirection(
+            entries     = entries,
+            settings    = settings,
+            modifier    = Modifier.fillMaxWidth(),
+            isLandscape = false,
+            chipsOnly   = true,
+        )
     }
 }
 
@@ -933,7 +934,9 @@ private fun StatsPanel(
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            // En modo chipsOnly el gauge ya ocupa la parte superior; reducimos el padding
+            // vertical para que los chips no queden demasiado separados de la gráfica.
+            .padding(horizontal = 12.dp, vertical = if (chipsOnly) 4.dp else 10.dp)
             .semantics { contentDescription = "Glucosa: $displayValue $unitSuffix $trendArrow. TIR $tirPct%, Alto $highPct%, Bajo $lowPct%" },
     ) {
         if (isLandscape) {
@@ -1078,8 +1081,10 @@ private fun StatsPanel(
             }
 
             // Fila 2: chips TIR / Alto / Bajo
+            // En chipsOnly reducimos el padding vertical para compactar la sección.
+            val chipRowPadV = if (chipsOnly) 3.dp else 6.dp
             Row(
-                modifier              = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                modifier              = Modifier.fillMaxWidth().padding(horizontal = 0.dp, vertical = chipRowPadV),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TirChip(value = "$tirPct%", label = "TIR",           color = Color(0xFF2ECC71), modifier = Modifier.weight(1f))
@@ -1087,32 +1092,56 @@ private fun StatsPanel(
                 TirChip(value = "$lowPct%", label = "Bajo $lowLabel", color = Color(0xFFE74C3C), modifier = Modifier.weight(1f))
             }
 
-            // Fila 3: GMI + CV% — siempre visible para comunicar que las métricas existen
-            Row(
-                modifier              = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // GMI: valor si ≥14 días de historial; chip deshabilitado con cuenta regresiva si no
-                if (gmiStr != null)
-                    TirChip(value = gmiStr, label = "GMI (HbA1c est.)", color = gmiColor, modifier = Modifier.weight(1f))
-                else
-                    GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
+            // Fila 3: GMI + CV% + Predicción en la misma fila cuando chipsOnly
+            // (ahorra una fila entera y hace que todo quepa sin scroll)
+            if (chipsOnly) {
+                Row(
+                    modifier              = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (gmiStr != null)
+                        TirChip(value = gmiStr, label = "GMI",  color = gmiColor, modifier = Modifier.weight(1f))
+                    else
+                        GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
 
-                if (cvStr != null)
-                    TirChip(value = cvStr, label = "CV% variabilidad", color = cvColor, modifier = Modifier.weight(1f))
-                else
-                    Spacer(Modifier.weight(1f))
-            }
-            // Fila 4: Predicción 20min — métrica secundaria, visualmente más discreta
-            if (predValueDisplay != null) {
-                SecondaryChip(
-                    value    = predValueDisplay,
-                    label    = "Predicción ~20min",
-                    color    = predColor2,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 6.dp),
-                )
+                    if (cvStr != null)
+                        TirChip(value = cvStr, label = "CV%", color = cvColor, modifier = Modifier.weight(1f))
+                    else
+                        Spacer(Modifier.weight(1f))
+
+                    // Predicción en la misma fila que GMI y CV%
+                    if (predValueDisplay != null)
+                        TirChip(value = predValueDisplay, label = "~20min", color = predColor2, modifier = Modifier.weight(1f))
+                    else
+                        Spacer(Modifier.weight(1f))
+                }
+            } else {
+                // Layout original (dos filas separadas) cuando no es chipsOnly
+                Row(
+                    modifier              = Modifier.fillMaxWidth().padding(start = 0.dp, end = 0.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (gmiStr != null)
+                        TirChip(value = gmiStr, label = "GMI (HbA1c est.)", color = gmiColor, modifier = Modifier.weight(1f))
+                    else
+                        GmiNaChip(daysRemaining = daysUntilGmi, modifier = Modifier.weight(1f))
+
+                    if (cvStr != null)
+                        TirChip(value = cvStr, label = "CV% variabilidad", color = cvColor, modifier = Modifier.weight(1f))
+                    else
+                        Spacer(Modifier.weight(1f))
+                }
+                // Fila 4: Predicción 20min
+                if (predValueDisplay != null) {
+                    SecondaryChip(
+                        value    = predValueDisplay,
+                        label    = "Predicción ~20min",
+                        color    = predColor2,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                    )
+                }
             }
 
         }
