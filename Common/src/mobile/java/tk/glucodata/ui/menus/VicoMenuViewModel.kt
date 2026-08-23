@@ -71,6 +71,15 @@ sealed class VicoMenuState {
 
     /** Sub-menú de intercambio de datos (desde Settings → Intercambiar datos). */
     object DataExchange : VicoMenuState()
+
+    /** Acerca de — información de versión y licencia. */
+    object About : VicoMenuState()
+
+    /** Exportar datos (scans, stream, historial, comidas…). */
+    object Export : VicoMenuState()
+
+    /** Último escaneo NFC — muestra el resultado del último scan. */
+    object LastScan : VicoMenuState()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

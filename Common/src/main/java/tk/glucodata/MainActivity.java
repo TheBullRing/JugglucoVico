@@ -274,15 +274,22 @@ private void startdisplay() {
             () -> { act.lightBars(!getInvertColors()); tk.glucodata.bluediag.start(act); },
             // Ajustes: abre el composable Vico en lugar del diálogo Java original
             () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Settings.INSTANCE); else tk.glucodata.settings.Settings.set(act); },
-            () -> { if(curveRef != null) curveRef.doabout(act); },
-            () -> { if(curveRef != null) curveRef.dialogs.showexport(act, curveRef.getWidth(), curveRef.getHeight(), null); },
+            // onAbout: abre el diálogo Compose de información de versión
+            () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.About.INSTANCE); else GlucoseCurve.doabout(act); },
+            // onExport: abre el overlay Java de exportación (ACTION_CREATE_DOCUMENT requiere onActivityResult)
+            // Dimensiones 0×0 son válidas: showexport() usa GlucoseCurve.getwidth(activity) internamente
+            () -> { curveRef.dialogs.showexport(act, 0, 0, null); },
             () -> new tk.glucodata.Backup().mkbackupview(act),
             () -> act.moveTaskToBack(true),
             // ── Datos ──────────────────────────────────────────────────────────
-            () -> { if(!Natives.staticnum()) { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.numberview.addnumberview(act); } } },
-            () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); Natives.makenumbers(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); curveRef.getnumcontrol(act); } },
-            () -> { if(Natives.makepercentages()) { act.lightBars(!getInvertColors()); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); tk.glucodata.Stats.mkstats(act); } },
+            // onNewAmount: abre el diálogo Compose de entrada de nueva cantidad
+            () -> { if(!Natives.staticnum()) { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.NumberEntry.INSTANCE); else if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.numberview.addnumberview(act); } } else { tk.glucodata.help.help(R.string.staticnum, act); } },
+            // onList: abre el historial/lista de datos (delegado a Java via VicoMenuState.History)
+            () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.History.INSTANCE); else if(curveRef != null) { act.lightBars(!getInvertColors()); Natives.makenumbers(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); curveRef.getnumcontrol(act); } },
+            // onStatistics: abre el diálogo Compose de estadísticas
+            () -> { if(menuViewModelRef[0] != null) menuViewModelRef[0].show(tk.glucodata.ui.menus.VicoMenuState.Stats.INSTANCE); else if(Natives.makepercentages()) { act.lightBars(!getInvertColors()); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); tk.glucodata.Stats.mkstats(act); } },
             () -> tk.glucodata.Talker.config(act),
+            // onLastScan: muestra el último resultado de escaneo NFC (overlay Java)
             () -> { if(Natives.showlastscan()) { act.lightBars(!getInvertColors()); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); } },
             () -> { act.lightBars(!getInvertColors()); Natives.settonow(); tk.glucodata.chart.NativeGraphDataRepository.notifyDataChanged(); },
             () -> { if(curveRef != null) { act.lightBars(!getInvertColors()); curveRef.startsearch(); } },

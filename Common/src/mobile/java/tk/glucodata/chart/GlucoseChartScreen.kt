@@ -208,12 +208,14 @@ fun GlucoseChartScreen(
                 viewModel      = menuViewModel,
                 onJavaDelegate = { state ->
                     // Solo los estados que aún no tienen equivalente Compose llegan aquí.
-                    // Watch / NumberEntry / Meal ya se gestionan en VicoMenuHost como Compose.
+                    // About ya es Compose nativo (VicoAboutDialog) — nunca llega aquí.
                     when (state) {
                         is VicoMenuState.BlueSensor -> menuActions.onBlueSensor.run()
                         is VicoMenuState.History    -> menuActions.onHistory.run()
                         is VicoMenuState.Iob        -> menuActions.onIob.run()
                         is VicoMenuState.SensorInfo -> { /* showsensorinfo llama Sensors.show() directamente */ }
+                        is VicoMenuState.Export     -> menuActions.onExport.run()
+                        is VicoMenuState.LastScan   -> menuActions.onLastScan.run()
                         else                        -> { /* resto de estados manejados por VicoMenuHost */ }
                     }
                 },

@@ -87,13 +87,20 @@ fun VicoMenuHost(
         is VicoMenuState.Meal ->
             VicoMealSimpleDialog(onDismiss = { viewModel.dismiss() })
 
-        // M6/BlueSensor — Sensor Bluetooth sigue delegando a Java (bluediag.start)
-        // M8/History, M10/SensorInfo, M14/Iob — Delegación en código Java de la Activity.
+        // About — diálogo Compose nativo de información de versión
+        is VicoMenuState.About ->
+            VicoAboutDialog(onDismiss = { viewModel.dismiss() })
+
+        // Export — el file picker del sistema requiere onActivityResult;
+        // sigue delegando al overlay Java existente (Dialogs.showexport).
+        // BlueSensor, History, SensorInfo, Iob, LastScan — Delegación en código Java de la Activity.
         // LaunchedEffect garantiza que la llamada ocurre una sola vez por cambio de estado.
         is VicoMenuState.BlueSensor,
         is VicoMenuState.History,
         is VicoMenuState.SensorInfo,
-        is VicoMenuState.Iob -> {
+        is VicoMenuState.Iob,
+        is VicoMenuState.Export,
+        is VicoMenuState.LastScan -> {
             val capturedState = menuState
             LaunchedEffect(capturedState) {
                 onJavaDelegate(capturedState)
