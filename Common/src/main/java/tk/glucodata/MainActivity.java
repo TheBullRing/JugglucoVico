@@ -652,12 +652,16 @@ if(!isWearable) {
 
         // setTheme() DEBE llamarse antes de super.onCreate() para que
         // surta efecto en la ventana y todas las vistas infladas.
-        // En ambos paths (NanoVG y Vico) se aplica el tema Juggluco del usuario,
-        // así todos los diálogos Java (Watch, Nightscout, Export, Meal…) respetan
-        // el tema elegido en ajustes. El Compose usa su propio GlucoseTheme (M3
-        // dynamicColor) de forma independiente, por lo que no se ve afectado.
         if(Applic.DynamicTheme) {
-            DynamicThemeUtils.setTheme(this);
+            if(!isWearable && Applic.useVicoChart()) {
+                // Path Vico: usar AppTheme.Vico (hereda de Material3.DayNight) para que
+                // todos los diálogos Java que se abren sobre el ComposeView usen Material You
+                // del sistema — el mismo color que usa el propio Compose (dynamicColorScheme).
+                // colorButtonBackground = colorPrimary de M3 = color del fondo de pantalla del usuario.
+                setTheme(R.style.AppTheme_Vico);
+            } else {
+                DynamicThemeUtils.setTheme(this);
+            }
         }
 
         if(isWearable) {
@@ -2114,31 +2118,75 @@ private void runNfcV(Tag tag) {
 
 int mirrorlistcolor=-1;
 
-public static void addMyContentView(Activity context,View view, ViewGroup.LayoutParams params) {
-    context.addContentView(view,params);
+// Contador de overlays WRAP_CONTENT con EditText activos en el path Vico.
+// Se usa para activar/desactivar adjustPan en la ventana cuando hay
+// un diálogo Java con teclado abierto encima del ComposeView.
+private static int wrapContentOverlayCount = 0;
+
+public static void addMyContentView(Activity context, View view, ViewGroup.LayoutParams params) {
+    context.addContentView(view, params);
     // Aplicar el tema Juggluco a los botones de los diálogos Java en ambos paths.
-    if(Applic.DynamicTheme)
-            DynamicThemeUtils.applyTheme(view);
-    if(Applic.useVicoChart()
-            && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
-            && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
-        ensureOpaqueBackground(view);
-        applyInsetsToOverlay(view);
+    if (Applic.DynamicTheme)
+        DynamicThemeUtils.applyTheme(view);
+    if (Applic.useVicoChart()) {
+        if (params.width  == ViewGroup.LayoutParams.MATCH_PARENT
+         && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
+            ensureOpaqueBackground(view);
+            applyInsetsToOverlay(view);
+        } else {
+            // Overlay WRAP_CONTENT (p.ej. NumberView, búsqueda):
+            // activar adjustPan para que el teclado del sistema no tape el formulario.
+            activateAdjustPan(context, view);
+        }
     }
-    }
+}
 
 public void addMyContentView(View view, ViewGroup.LayoutParams params) {
-    addContentView(view,params);
+    addContentView(view, params);
     // Aplicar el tema Juggluco a los botones de los diálogos Java en ambos paths.
-    if(Applic.DynamicTheme)
+    if (Applic.DynamicTheme)
         DynamicThemeUtils.applyTheme(view);
-    if(Applic.useVicoChart()
-            && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
-            && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
-        ensureOpaqueBackground(view);
-        applyInsetsToOverlay(view);
+    if (Applic.useVicoChart()) {
+        if (params.width  == ViewGroup.LayoutParams.MATCH_PARENT
+         && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
+            ensureOpaqueBackground(view);
+            applyInsetsToOverlay(view);
+        } else {
+            activateAdjustPan(this, view);
+        }
     }
+}
+
+/**
+ * En el path Vico, cuando se añade un overlay WRAP_CONTENT (NumberView,
+ * búsqueda…) que puede abrir el teclado del sistema, se activa
+ * adjustPan para que la ventana se desplace y el formulario no quede tapado.
+ * Se restaura adjustNothing automáticamente cuando el overlay se destruye,
+ * usando un OnAttachStateChangeListener sin necesidad de modificar
+ * Settings.removeContentView() (que es intocable).
+ */
+private static void activateAdjustPan(Activity context, View view) {
+    if (Build.VERSION.SDK_INT < 30) return; // Solo necesario con EdgeToEdge (API 30+)
+    if (wrapContentOverlayCount == 0) {
+        context.getWindow().setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN |
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
     }
+    wrapContentOverlayCount++;
+    view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+        @Override public void onViewAttachedToWindow(View v) {}
+        @Override public void onViewDetachedFromWindow(View v) {
+            v.removeOnAttachStateChangeListener(this);
+            wrapContentOverlayCount = Math.max(0, wrapContentOverlayCount - 1);
+            if (wrapContentOverlayCount == 0) {
+                // Restaurar el modo sin ajuste (EdgeToEdge puro).
+                context.getWindow().setSoftInputMode(
+                        android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING |
+                        android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
+            }
+        }
+    });
+}
 
 /**
  * In the Vico/EdgeToEdge path, MATCH_PARENT overlays sit on top of the
