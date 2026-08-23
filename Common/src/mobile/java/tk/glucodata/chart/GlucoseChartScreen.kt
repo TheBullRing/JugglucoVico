@@ -214,13 +214,15 @@ fun GlucoseChartScreen(
                         is VicoMenuState.History    -> menuActions.onHistory.run()
                         is VicoMenuState.Iob        -> menuActions.onIob.run()
                         is VicoMenuState.SensorInfo -> { /* showsensorinfo llama Sensors.show() directamente */ }
-                        is VicoMenuState.Export     -> menuActions.onExport.run()
-                        is VicoMenuState.LastScan   -> menuActions.onLastScan.run()
-                        is VicoMenuState.Sensor     -> menuActions.onSensor.run()
-                        is VicoMenuState.Backup     -> menuActions.onMirror.run()
-                        is VicoMenuState.Talk       -> menuActions.onTalk.run()
-                        is VicoMenuState.Search     -> menuActions.onSearch.run()
-                        is VicoMenuState.DatePick   -> menuActions.onDate.run()
+                        // Estos estados usan lambdas Java reales separadas (onXxxJava)
+                        // para evitar que onXxx (que llama menuViewModel.show) cause un loop.
+                        is VicoMenuState.Export     -> menuActions.onExportJava.run()
+                        is VicoMenuState.LastScan   -> menuActions.onLastScanJava.run()
+                        is VicoMenuState.Sensor     -> menuActions.onSensorJava.run()
+                        is VicoMenuState.Backup     -> menuActions.onBackupJava.run()
+                        is VicoMenuState.Talk       -> menuActions.onTalkJava.run()
+                        is VicoMenuState.Search     -> menuActions.onSearchJava.run()
+                        is VicoMenuState.DatePick   -> menuActions.onDateJava.run()
                         else                        -> { /* resto de estados manejados por VicoMenuHost */ }
                     }
                 },

@@ -94,7 +94,7 @@ data class VicoMenuActions(
     val onGlucoseFloatChange:    (Boolean) -> Unit,
     val portraitPivoted:         Boolean,
     val onPortraitPivotedChange: (Boolean) -> Unit,
-    // ── Acciones delegadas a código Java (M6/M7/M8/M13/M14) ─────────────────
+    // ── Acciones delegadas a código Java (M6/M7/M8/M13/M14 y overlays varios) ──
     // Estos campos tienen valor por defecto no-op para compatibilidad con código
     // que construya VicoMenuActions sin especificarlos (tests, previews, etc.).
     // En producción (MainActivity), siempre se pasa la lambda correcta.
@@ -108,6 +108,23 @@ data class VicoMenuActions(
     val onMeal:        VicoMenuAction = VicoMenuAction {},
     /** M14 — Abre la entrada de insulina activa (IOB.mkview). */
     val onIob:         VicoMenuAction = VicoMenuAction {},
+    // ── Acciones Java reales para overlays que deben esperar a que Compose cierre el sheet ──
+    // El sheet llama onXxxViaMenu que llama menuViewModel.show(State).
+    // El onJavaDelegate de GlucoseChartScreen invoca estas lambdas reales.
+    /** Acción Java real para Sensor (bluediag.start). */
+    val onSensorJava:   VicoMenuAction = VicoMenuAction {},
+    /** Acción Java real para Clon/Backup (Backup.mkbackupview). */
+    val onBackupJava:   VicoMenuAction = VicoMenuAction {},
+    /** Acción Java real para Hablar (Talker.config). */
+    val onTalkJava:     VicoMenuAction = VicoMenuAction {},
+    /** Acción Java real para Buscar (curveRef.startsearch). */
+    val onSearchJava:   VicoMenuAction = VicoMenuAction {},
+    /** Acción Java real para Fecha (curveRef.startdatepick). */
+    val onDateJava:     VicoMenuAction = VicoMenuAction {},
+    /** Acción Java real para Exportar (Dialogs.showexport). */
+    val onExportJava:   VicoMenuAction = VicoMenuAction {},
+    /** Acción Java real para Último escaneo (Natives.showlastscan). */
+    val onLastScanJava: VicoMenuAction = VicoMenuAction {},
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
