@@ -652,14 +652,12 @@ if(!isWearable) {
 
         // setTheme() DEBE llamarse antes de super.onCreate() para que
         // surta efecto en la ventana y todas las vistas infladas.
+        // En ambos paths (NanoVG y Vico) se aplica el tema Juggluco del usuario,
+        // así todos los diálogos Java (Watch, Nightscout, Export, Meal…) respetan
+        // el tema elegido en ajustes. El Compose usa su propio GlucoseTheme (M3
+        // dynamicColor) de forma independiente, por lo que no se ve afectado.
         if(Applic.DynamicTheme) {
-            if(!isWearable && Applic.useVicoChart()) {
-                // Path Vico: usar Theme.Material3.DayNight para que todos los
-                // diálogos Java hereden M3/Material You automáticamente.
-                setTheme(R.style.AppTheme_Vico);
-            } else {
-                DynamicThemeUtils.setTheme(this);
-            }
+            DynamicThemeUtils.setTheme(this);
         }
 
         if(isWearable) {
@@ -2118,9 +2116,8 @@ int mirrorlistcolor=-1;
 
 public static void addMyContentView(Activity context,View view, ViewGroup.LayoutParams params) {
     context.addContentView(view,params);
-    // En el path Vico los botones heredan el estilo M3 del tema AppTheme.Vico —
-    // applyTheme() sobreescribiría ese estilo con colores NanoVG incorrectos.
-    if(Applic.DynamicTheme && !Applic.useVicoChart())
+    // Aplicar el tema Juggluco a los botones de los diálogos Java en ambos paths.
+    if(Applic.DynamicTheme)
             DynamicThemeUtils.applyTheme(view);
     if(Applic.useVicoChart()
             && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
@@ -2132,7 +2129,8 @@ public static void addMyContentView(Activity context,View view, ViewGroup.Layout
 
 public void addMyContentView(View view, ViewGroup.LayoutParams params) {
     addContentView(view,params);
-    if(Applic.DynamicTheme && !Applic.useVicoChart())
+    // Aplicar el tema Juggluco a los botones de los diálogos Java en ambos paths.
+    if(Applic.DynamicTheme)
         DynamicThemeUtils.applyTheme(view);
     if(Applic.useVicoChart()
             && params.width  == ViewGroup.LayoutParams.MATCH_PARENT
