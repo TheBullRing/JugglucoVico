@@ -593,53 +593,37 @@ private fun PortraitLayout(
 
     Column(modifier = Modifier.fillMaxSize()) {
 
+        // ── [0] Top App Bar — icono + "Juggluco" (izq) y ☰ (der) ─────────────
+        // En portrait no había barra superior; se añade ChartTopBar para que el
+        // título quede alineado horizontalmente con el botón de menú.
+        ChartTopBar(onMenuClick = onMenuClick)
+
         // ── [a] Sección 1: Velocímetro ────────────────────────────────────────
-        // weight(0.35f): el gauge tiene aspectRatio(1.6) propio, pero el Box
-        // padre necesita un peso para que la Column divida el espacio sobrante
-        // entre gauge y gráfica.  El gauge se encoge al contenido con wrapContentHeight.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.35f),
+                .weight(0.26f),
         ) {
             GlucoseGauge(
                 currentMgdL  = glucoseData.latestMgdL,
                 settings     = settings,
                 trendArrow   = glucoseData.trendArrow,
+                deltaDisplay = glucoseData.deltaDisplay,
+                deltaColor   = glucoseData.deltaColor,
                 glucoseColor = glucoseData.glucoseColor,
+                ageStr       = glucoseData.ageStr,
+                ageColor     = glucoseData.ageColor,
                 modifier     = Modifier.fillMaxSize(),
             )
-            // Botón ☰ flotante en esquina superior derecha
-            Box(
-                modifier         = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 4.dp, end = 4.dp)
-                    .size(40.dp)
-                    .clickable(onClick = onMenuClick)
-                    .semantics { contentDescription = "Abrir menú principal" },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("☰", style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f))
-            }
-            // Age of data — esquina superior izquierda, sobre el gauge
-            if (glucoseData.ageStr != null) {
-                Text(
-                    text     = glucoseData.ageStr,
-                    style    = MaterialTheme.typography.labelSmall,
-                    color    = glucoseData.ageColor,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 10.dp, top = 6.dp),
-                )
-            }
+            // ageStr ya aparece dentro del hueco del arco como línea 4 del canvas.
+            // El botón ☰ ahora vive en ChartTopBar; no se duplica aquí.
         }
 
         // ── [b] Sección 2: Gráfica ────────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.65f)
+                .weight(0.74f)
                 .background(MaterialTheme.colorScheme.surface),
         ) {
             if (settings.portraitPivoted) {
@@ -936,7 +920,9 @@ private fun StatsPanel(
             .background(MaterialTheme.colorScheme.surface)
             // En modo chipsOnly el gauge ya ocupa la parte superior; reducimos el padding
             // vertical para que los chips no queden demasiado separados de la gráfica.
-            .padding(horizontal = 12.dp, vertical = if (chipsOnly) 4.dp else 10.dp)
+            // chipsOnly=true: 12 dp de respiro entre el borde inferior del gráfico
+            // y la primera fila de tarjetas (antes era 4 dp, demasiado estrecho).
+            .padding(horizontal = 12.dp, vertical = if (chipsOnly) 12.dp else 10.dp)
             .semantics { contentDescription = "Glucosa: $displayValue $unitSuffix $trendArrow. TIR $tirPct%, Alto $highPct%, Bajo $lowPct%" },
     ) {
         if (isLandscape) {

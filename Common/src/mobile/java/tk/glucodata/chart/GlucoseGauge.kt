@@ -1,22 +1,20 @@
 /*
- * GlucoseGauge -- velocimetro de glucosa en tiempo real.
+ * GlucoseGauge — indicador de arco compacto para el modo portrait.
  *
- * Geometria del arco (sistema Android: 0=derecha, sentido horario):
- *   ARC_START = 150 deg  => extremo inferior izquierdo
- *   ARC_END   =  30 deg  => extremo inferior derecho
- *   Punto mas alto: 270 deg (tope del arco) => cy - R
- *   Puntos extremos inferiores: cy + R*sin(150) = cy + 0.5*R
+ * Diseño limpio (sin saturación de marcas):
+ *   • Arco multicolor (rojo/naranja/verde/naranja/rojo) con 4 líneas divisorias.
+ *   • SIN etiquetas de escala exterior (0, 50, 100…300) → eliminan ruido visual.
+ *   • SIN etiquetas numéricas en los divisores interiores → el color comunica el rango.
+ *   • Dentro del hueco se muestran tres líneas:
+ *       – Valor de glucosa actual  (texto grande, color de zona)
+ *       – Unidad (mg/dL / mmol/L)  (texto pequeño, gris)
+ *       – Delta + flecha de tendencia  ("+7 →")  (texto medio, color de delta)
+ *   • Aguja: triángulo apunta al borde interior del arco; base queda fuera del texto.
  *
- * Colores respetan los umbrales del usuario:
- *   [0, veryLow)               => ROJO
- *   [veryLow, targetLow)       => NARANJA
- *   [targetLow, targetHigh]    => VERDE
- *   (targetHigh, veryHigh]     => NARANJA
- *   (veryHigh, GAUGE_MAX_MGDL] => ROJO
- *
- * Aguja triangular con punta en el borde interior del arco.
- * Etiquetas numericas en el exterior del arco en veryLow, targetLow,
- * targetHigh, veryHigh y en los extremos 0/GAUGE_MAX.
+ * Geometría del arco (sistema Android: 0=derecha, sentido horario):
+ *   ARC_START = 150°  → extremo inferior izquierdo (valor 0)
+ *   ARC_END   = 390°  → extremo inferior derecho   (valor 300)
+ *   Tope del arco: 270° → cy – R
  */
 package tk.glucodata.chart
 
@@ -48,33 +46,56 @@ import kotlin.math.sin
 
 private const val ARC_START_ANGLE        = 150f
 private const val ARC_SWEEP              = 240f
+private const val GAUGE_MIN_MGDL         = 0f
 private const val GAUGE_MAX_MGDL         = 300f
+
+// Grosor del arco: 0.13 → arco visible pero compacto (sin saturar de marcas).
 private const val ARC_THICKNESS_FRACTION = 0.13f
+
+// Anchura angular mínima por banda coloreada (evita que rojo1 y naranja1 desaparezcan).
+private const val MIN_BAND_DEG = 8f
+
+private const val DEFAULT_VERY_LOW    = 55f
+private const val DEFAULT_TARGET_LOW  = 70f
+private const val DEFAULT_TARGET_HIGH = 180f
+private const val DEFAULT_VERY_HIGH   = 250f
 
 private val GAUGE_COLOR_CRITICAL = Color(0xFFE74C3C)
 private val GAUGE_COLOR_WARNING  = Color(0xFFF39C12)
 private val GAUGE_COLOR_OK       = Color(0xFF2ECC71)
 private val GAUGE_COLOR_TRACK    = Color(0x558E8E93)
-private val GAUGE_COLOR_NEEDLE   = Color(0xFF1A1A2E)   // gris muy oscuro, visible en cualquier fondo
-
-// Convierte valor display a mg/dL (necesario aqui para que mgdlToAngle
-// pueda usarse antes de que el Canvas este construido)
-private fun fromDisplayUnit(displayValue: Float, unit: GlucoseUnit): Float =
-    if (unit == GlucoseUnit.MMOL) displayValue * 18.0f else displayValue
+private val GAUGE_COLOR_NEEDLE   = Color(0xFF1A1A2E)
 
 private fun toDisplayUnit(mgdl: Float, unit: GlucoseUnit): Float =
     if (unit == GlucoseUnit.MMOL) mgdl / 18.0f else mgdl
 
+/**
+ * Indicador de arco semicircular compacto.
+ *
+ * @param currentMgdL  Glucosa actual en mg/dL. null → muestra "--".
+ * @param settings     Configuración del gráfico (unidad, umbrales, etc.).
+ * @param trendArrow   Flecha de tendencia: "→", "↗", "↗↗", "↙", "↙↙".
+ * @param deltaDisplay Delta formateado, p. ej. "+7" o "+0.4". null si no hay dato previo.
+ * @param deltaColor   Color para el texto de delta.
+ * @param glucoseColor Color del valor de glucosa según zona clínica.
+ * @param ageStr       Antigüedad del dato, p. ej. "ahora", "hace 5m". null si no hay dato.
+ * @param ageColor     Color del texto de antigüedad.
+ */
 @Composable
 fun GlucoseGauge(
     currentMgdL:  Float?,
     settings:     ChartSettings,
     trendArrow:   String,
+    deltaDisplay: String?,
+    deltaColor:   Color,
     glucoseColor: Color,
+    ageStr:       String?,
+    ageColor:     Color,
     modifier:     Modifier = Modifier,
 ) {
     val targetAngle = if (currentMgdL == null) ARC_START_ANGLE else {
-        val fraction = currentMgdL.coerceIn(0f, GAUGE_MAX_MGDL) / GAUGE_MAX_MGDL
+        val range    = GAUGE_MAX_MGDL - GAUGE_MIN_MGDL
+        val fraction = (currentMgdL.coerceIn(GAUGE_MIN_MGDL, GAUGE_MAX_MGDL) - GAUGE_MIN_MGDL) / range
         ARC_START_ANGLE + fraction * ARC_SWEEP
     }
     val animatedAngle = remember { Animatable(ARC_START_ANGLE) }
@@ -91,147 +112,268 @@ fun GlucoseGauge(
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val surfaceColor     = MaterialTheme.colorScheme.surface
 
+    // aspectRatio 2.2: más ancho que alto → cabecera horizontal compacta.
     Box(
-        modifier         = modifier.fillMaxWidth().aspectRatio(1.6f),
+        modifier         = modifier.fillMaxWidth().aspectRatio(2.2f),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
 
-            // Espacio para etiquetas numéricas exteriores:
-            //   - arriba/laterales: las etiquetas superiores e inferiores del arco
-            //     (en 0° y 300 mg/dL, ángulos ~150° y ~30°) sobresalen 1.5× el tamaño
-            //     del texto fuera del radio. Reservamos ~18dp por lado.
-            val padTop  = 20.dp.toPx()
-            val padBot  = 10.dp.toPx()
-            val padSide = 32.dp.toPx()   // aumentado para que 0 y 300 no se corten
+            // ── Geometría del arco ──────────────────────────────────────────────
+            val padTop = h * 0.06f
+            val padBot = h * 0.10f
 
-            val radius = minOf(
-                w / 2f - padSide,
-                (h - padTop - padBot) / (1.5f + ARC_THICKNESS_FRACTION / 2f),
-            )
+            val lateralMargin   = w * 0.05f
+            val radiusFromWidth = (w / 2f - lateralMargin) / 0.866f
+            val availH          = h - padTop - padBot
+            // Altura usada: desde cy-radius (tope) hasta cy+radius*0.5 (extremos) ≈ radius*1.5
+            val radiusFromHeight = availH / (1.5f + ARC_THICKNESS_FRACTION * 0.5f)
+            val radius = minOf(radiusFromWidth, radiusFromHeight)
             val stroke = radius * ARC_THICKNESS_FRACTION
             val cx = w / 2f
-            val cy = padTop + radius + stroke / 2f
+            val cy = padTop + radius
 
-            // ---- umbrales en mg/dL (los settings están en unidades de display) ----
-            val vl = fromDisplayUnit(settings.veryLow,    settings.unit).coerceIn(0f, GAUGE_MAX_MGDL)
-            val tl = fromDisplayUnit(settings.targetLow,  settings.unit).coerceIn(0f, GAUGE_MAX_MGDL)
-            val th = fromDisplayUnit(settings.targetHigh, settings.unit).coerceIn(0f, GAUGE_MAX_MGDL)
-            val vh = fromDisplayUnit(settings.veryHigh,   settings.unit).coerceIn(0f, GAUGE_MAX_MGDL)
+            // ── Umbrales con fallback clínico ───────────────────────────────────
+            val vl = (if (settings.veryLow    > 0f) settings.veryLow    else DEFAULT_VERY_LOW).coerceIn(GAUGE_MIN_MGDL, GAUGE_MAX_MGDL)
+            val tl = (if (settings.targetLow  > 0f) settings.targetLow  else DEFAULT_TARGET_LOW).coerceIn(GAUGE_MIN_MGDL, GAUGE_MAX_MGDL)
+            val th = (if (settings.targetHigh > 0f) settings.targetHigh else DEFAULT_TARGET_HIGH).coerceIn(GAUGE_MIN_MGDL, GAUGE_MAX_MGDL)
+            val vh = (if (settings.veryHigh   > 0f) settings.veryHigh   else DEFAULT_VERY_HIGH).coerceIn(GAUGE_MIN_MGDL, GAUGE_MAX_MGDL)
 
-            fun mgdlToAngle(mgdl: Float): Float =
-                ARC_START_ANGLE + (mgdl.coerceIn(0f, GAUGE_MAX_MGDL) / GAUGE_MAX_MGDL) * ARC_SWEEP
-
+            fun mgdlToAngle(mgdl: Float): Float {
+                val fraction = (mgdl.coerceIn(GAUGE_MIN_MGDL, GAUGE_MAX_MGDL) - GAUGE_MIN_MGDL) /
+                        (GAUGE_MAX_MGDL - GAUGE_MIN_MGDL)
+                return ARC_START_ANGLE + fraction * ARC_SWEEP
+            }
             fun deg2rad(deg: Float) = Math.toRadians(deg.toDouble())
 
-            // ---- 1. Arco de fondo (gris) -----------------------------------------
+            val aMin = mgdlToAngle(GAUGE_MIN_MGDL)
+            val aVl  = mgdlToAngle(vl)
+            val aTl  = mgdlToAngle(tl)
+            val aTh  = mgdlToAngle(th)
+            val aVh  = mgdlToAngle(vh)
+            val aMax = mgdlToAngle(GAUGE_MAX_MGDL)
+
+            // ── Anchura mínima de banda ─────────────────────────────────────────
+            val rawSweeps = floatArrayOf(
+                aVl - aMin, aTl - aVl, aTh - aTl, aVh - aTh, aMax - aVh,
+            )
+            var greenBorrow = 0f
+            for (i in rawSweeps.indices) {
+                if (i != 2 && rawSweeps[i] < MIN_BAND_DEG) {
+                    greenBorrow += MIN_BAND_DEG - rawSweeps[i]
+                    rawSweeps[i] = MIN_BAND_DEG
+                }
+            }
+            rawSweeps[2] = maxOf(rawSweeps[2] - greenBorrow, MIN_BAND_DEG)
+
+            val startAngles = floatArrayOf(
+                aMin,
+                aMin + rawSweeps[0],
+                aMin + rawSweeps[0] + rawSweeps[1],
+                aMin + rawSweeps[0] + rawSweeps[1] + rawSweeps[2],
+                aMin + rawSweeps[0] + rawSweeps[1] + rawSweeps[2] + rawSweeps[3],
+            )
+            val divAngles = floatArrayOf(aVl, aTl, aTh, aVh)
+
+            // ── 1. Arco de fondo ────────────────────────────────────────────────
             drawGaugeArc(cx, cy, radius, stroke, ARC_START_ANGLE, ARC_SWEEP, GAUGE_COLOR_TRACK)
 
-            // ---- 2. Cinco segmentos de color según umbrales del usuario ----------
-            drawGaugeArc(cx, cy, radius, stroke, mgdlToAngle(0f),  mgdlToAngle(vl) - mgdlToAngle(0f),             GAUGE_COLOR_CRITICAL)
-            drawGaugeArc(cx, cy, radius, stroke, mgdlToAngle(vl),  mgdlToAngle(tl) - mgdlToAngle(vl),             GAUGE_COLOR_WARNING)
-            drawGaugeArc(cx, cy, radius, stroke, mgdlToAngle(tl),  mgdlToAngle(th) - mgdlToAngle(tl),             GAUGE_COLOR_OK)
-            drawGaugeArc(cx, cy, radius, stroke, mgdlToAngle(th),  mgdlToAngle(vh) - mgdlToAngle(th),             GAUGE_COLOR_WARNING)
-            drawGaugeArc(cx, cy, radius, stroke, mgdlToAngle(vh),  mgdlToAngle(GAUGE_MAX_MGDL) - mgdlToAngle(vh), GAUGE_COLOR_CRITICAL)
+            // ── 2. Cinco bandas coloreadas ──────────────────────────────────────
+            val bandColors = listOf(
+                GAUGE_COLOR_CRITICAL, GAUGE_COLOR_WARNING,
+                GAUGE_COLOR_OK,
+                GAUGE_COLOR_WARNING, GAUGE_COLOR_CRITICAL,
+            )
+            for (i in 0..4) {
+                drawGaugeArc(cx, cy, radius, stroke, startAngles[i], rawSweeps[i], bandColors[i])
+            }
 
-            // ---- 3. Divisores blancos en los 4 umbrales --------------------------
-            listOf(vl, tl, th, vh).forEach { mgdl ->
-                val rad    = deg2rad(mgdlToAngle(mgdl))
+            // ── 3. Divisores (4 líneas entre bandas) ────────────────────────────
+            divAngles.forEach { deg ->
+                val rad    = deg2rad(deg)
                 val innerR = radius - stroke * 0.6f
                 val outerR = radius + stroke * 0.6f
                 drawLine(
                     color       = surfaceColor.copy(alpha = 0.90f),
                     start       = Offset((cx + innerR * cos(rad)).toFloat(), (cy + innerR * sin(rad)).toFloat()),
                     end         = Offset((cx + outerR * cos(rad)).toFloat(), (cy + outerR * sin(rad)).toFloat()),
-                    strokeWidth = 2.5f.dp.toPx(),
+                    strokeWidth = 2.dp.toPx(),
                 )
             }
 
-            // ---- 4. Etiquetas numéricas en los umbrales y extremos ---------------
-            // Se muestran en la unidad del usuario fuera del arco
-            val labelMgdlList = listOf(0f, vl, tl, th, vh, GAUGE_MAX_MGDL)
-            val labelPaint = android.graphics.Paint().apply {
+            // ── 3b. Etiquetas de los 2 umbrales de decisión (targetLow / targetHigh) ─
+            // Solo se muestran tl y th (p. ej. 70 y 180) en el borde exterior del arco.
+            // Son los únicos valores que el usuario necesita para contextualizar la aguja:
+            //   - dónde empieza la hipoglucemia  (tl)
+            //   - dónde empieza la hiperglucemia (th)
+            // Fuente pequeña y gris para que no compitan con el valor central.
+            // Radio de posición: justo fuera del arco con un pequeño margen de aire.
+            val threshLabelSize = (w * 0.028f).coerceIn(9.dp.toPx(), 11.dp.toPx())
+            // +1.1 en lugar de 0.7: da ~2-3 px más de margen entre el arco y el texto,
+            // especialmente para el 180 que cae cerca del punto más alto (≈270°).
+            val threshLabelOutR = radius + stroke * 0.5f + threshLabelSize * 1.1f
+            val threshLabelPaint = android.graphics.Paint().apply {
                 isAntiAlias = true
-                textAlign   = android.graphics.Paint.Align.CENTER
-                textSize    = (radius * 0.16f).coerceAtMost(12.dp.toPx())
-                color       = onSurfaceVariant.toArgb()
-            }
-            // Distancia desde el centro del arco hasta el centro del texto
-            val labelDist = radius + stroke * 0.62f + labelPaint.textSize * 0.55f
-
-            labelMgdlList.forEach { mgdl ->
-                val deg = mgdlToAngle(mgdl)
-                val rad = deg2rad(deg)
-                // Tick pequeño hacia dentro del arco
-                val tickInner = radius - stroke * 0.90f
-                val tickOuter = radius + stroke * 0.10f
-                drawLine(
-                    color       = surfaceColor.copy(alpha = 0.60f),
-                    start       = Offset((cx + tickInner * cos(rad)).toFloat(), (cy + tickInner * sin(rad)).toFloat()),
-                    end         = Offset((cx + tickOuter * cos(rad)).toFloat(), (cy + tickOuter * sin(rad)).toFloat()),
-                    strokeWidth = 1.5f.dp.toPx(),
-                )
-                // Texto de la etiqueta
-                val dispVal = toDisplayUnit(mgdl, settings.unit)
-                val label = if (settings.unit == GlucoseUnit.MMOL) "%.1f".format(dispVal) else dispVal.toInt().toString()
-                val lx = (cx + labelDist * cos(rad)).toFloat()
-                val ly = (cy + labelDist * sin(rad)).toFloat()
-                val textBaselineY = ly - (labelPaint.ascent() + labelPaint.descent()) / 2f
-                drawContext.canvas.nativeCanvas.drawText(label, lx, textBaselineY, labelPaint)
+                textSize    = threshLabelSize
+                typeface    = android.graphics.Typeface.DEFAULT
+                color       = onSurfaceVariant.copy(alpha = 0.60f).toArgb()
             }
 
-            // ---- 5. Aguja triangular ---------------------------------------------
-            // La punta llega al borde interior del arco; la base nace en el pivot.
+            // Dibuja la etiqueta del umbral en el ángulo correcto con alineación dinámica.
+            //
+            // pushDown: desplazamiento vertical adicional proporcional a (-sin).
+            // sin(270°) = -1  → pushDown máximo (el 180 está en el tope del arco, empuja
+            //                   el texto hacia abajo para alejarlo de la barra de estado).
+            // sin(206°) ≈ -0.44 → pushDown parcial para el 70 (sin problema real).
+            // sin(lateral) ≈ 0  → pushDown ≈ 0 (ángulos próximos al ecuador del arco).
+            // El factor threshLabelSize*0.9 calibra el desplazamiento en ~1 altura de texto.
+            fun drawThreshLabel(mgdl: Float, angleDeg: Float) {
+                val rad    = deg2rad(angleDeg)
+                val sinVal = sin(rad).toFloat()
+                val cosVal = cos(rad).toFloat()
+                threshLabelPaint.textAlign = when {
+                    cosVal < -0.25f -> android.graphics.Paint.Align.RIGHT
+                    cosVal >  0.25f -> android.graphics.Paint.Align.LEFT
+                    else            -> android.graphics.Paint.Align.CENTER
+                }
+                val lx = (cx + threshLabelOutR * cos(rad)).toFloat()
+                val ly = (cy + threshLabelOutR * sinVal).toFloat()
+                // pushDown: máximo cuando sin<0 (zona superior del arco), nulo en zona inferior.
+                val pushDown = (-sinVal).coerceAtLeast(0f) * threshLabelSize * 0.9f
+                val disp = toDisplayUnit(mgdl, settings.unit)
+                val lbl  = if (settings.unit == GlucoseUnit.MMOL) "%.1f".format(disp) else disp.toInt().toString()
+                val textCy = ly - (threshLabelPaint.ascent() + threshLabelPaint.descent()) / 2f + pushDown
+                drawContext.canvas.nativeCanvas.drawText(lbl, lx, textCy, threshLabelPaint)
+            }
+
+            drawThreshLabel(tl, aTl)   // 70  (o equivalente mmol)  — lado izquierdo del arco
+            drawThreshLabel(th, aTh)   // 180 (o equivalente mmol)  — lado derecho del arco
+
+            // ── 4. Aguja ────────────────────────────────────────────────────────
+            // Punta en el borde interior; base a 2×stroke hacia el centro → no llega al texto.
             val needleAngleRad = deg2rad(animatedAngle.value)
-            val needleTip   = radius - stroke * 0.55f  // punta: borde interior del arco
-            val needleBase  = radius * 0.18f           // cola detrás del pivot
-            val halfWidth   = stroke * 0.28f           // semiancho de la base
+            val tipR  = radius - stroke * 0.5f
+            val baseR = radius - stroke * 2.0f
+            val halfW = stroke * 0.45f
 
-            val dirX  = ( cos(needleAngleRad)).toFloat()
-            val dirY  = ( sin(needleAngleRad)).toFloat()
-            val perpX = (-sin(needleAngleRad)).toFloat()
-            val perpY = ( cos(needleAngleRad)).toFloat()
-
-            val tipX  = cx + needleTip  * dirX
-            val tipY  = cy + needleTip  * dirY
-            val baseX = cx - needleBase * dirX
-            val baseY = cy - needleBase * dirY
+            val dX = cos(needleAngleRad).toFloat()
+            val dY = sin(needleAngleRad).toFloat()
+            val pX = (-sin(needleAngleRad)).toFloat()
+            val pY = (cos(needleAngleRad)).toFloat()
 
             val needlePath = Path().apply {
-                moveTo(tipX, tipY)
-                lineTo(baseX + halfWidth * perpX, baseY + halfWidth * perpY)
-                lineTo(baseX - halfWidth * perpX, baseY - halfWidth * perpY)
+                moveTo(cx + tipR  * dX,               cy + tipR  * dY)
+                lineTo(cx + baseR * dX + halfW * pX,  cy + baseR * dY + halfW * pY)
+                lineTo(cx + baseR * dX - halfW * pX,  cy + baseR * dY - halfW * pY)
                 close()
             }
-            // Aguja blanca con contorno fino para visibilidad en cualquier fondo
-            drawPath(needlePath, color = GAUGE_COLOR_NEEDLE)
-            drawPath(needlePath, color = surfaceColor.copy(alpha = 0.35f), style = Stroke(width = 1.dp.toPx()))
+            drawPath(needlePath, GAUGE_COLOR_NEEDLE)
+            drawPath(needlePath, surfaceColor.copy(alpha = 0.20f), style = Stroke(width = 0.8.dp.toPx()))
 
-            // Pivot central
-            drawCircle(color = GAUGE_COLOR_NEEDLE, radius = 5.5f.dp.toPx(), center = Offset(cx, cy))
-            drawCircle(color = glucoseColor,       radius = 3.5f.dp.toPx(), center = Offset(cx, cy))
+            // ── 5. Textos centrales ─────────────────────────────────────────────
+            // Jerarquía vertical dentro del hueco (arriba → abajo):
+            //   Línea 1: valor grande  (241)
+            //   Línea 2: unidad pequeña  (mg/dL)
+            //   Línea 3: delta  +  flecha  dibujados como dos pasadas separadas
+            //            para evitar solapamiento de glifos unicode.
+            //   Línea 4: antigüedad del dato  (ahora · hace 5m)  en gris tenue
+            //
+            // maxTextWidth = 80% del diámetro interior → ningún texto toca el arco.
+            val innerR       = radius - stroke / 2f
+            val maxTextWidth = innerR * 1.6f
 
-            // ---- 6. Texto del valor en el hueco interior -------------------------
-            val visualCenterY = cy - radius * 0.50f
+            val valueFontSize = (innerR * 0.76f).coerceAtMost(maxTextWidth / 1.8f)
+            // subFontSize ya no se usa como línea independiente (unidad va inline en línea 3).
+            val deltaFontSize = (valueFontSize * 0.40f).coerceAtMost(maxTextWidth / 4.8f)
+            val ageFontSize   = (valueFontSize * 0.28f).coerceAtMost(maxTextWidth / 6.5f)
 
-            val textPaint = android.graphics.Paint().apply {
+            val lineGap  = valueFontSize * 0.10f
+            // totalH: valor + gap + línea3(delta+unidad+flecha) + [gap+age]
+            val totalH   = valueFontSize + lineGap * 2f +
+                           deltaFontSize + (if (ageStr != null) lineGap * 0.8f + ageFontSize else 0f)
+            val blockTop = cy - totalH / 2f
+
+            // ---- Línea 1: Valor de glucosa ----
+            val valuePaint = android.graphics.Paint().apply {
                 isAntiAlias = true
                 textAlign   = android.graphics.Paint.Align.CENTER
                 typeface    = android.graphics.Typeface.DEFAULT_BOLD
+                textSize    = valueFontSize
+                color       = glucoseColor.toArgb()
+            }
+            val valueY = blockTop + valueFontSize
+            drawContext.canvas.nativeCanvas.drawText(displayValue, cx, valueY, valuePaint)
+
+            // ---- Línea 2 eliminada: la unidad ahora va inline en la línea 3 ----
+            // "+0 mg/dL →" se construye como un solo bloque de tres segmentos medidos.
+            // Recalculamos unitY como punto de referencia para calcular deltaBaseY.
+            val unitY = valueY + lineGap   // punto de referencia sin texto visible
+
+            // ---- Línea 3: "+0 mg/dL →"  (delta · unidad · flecha en una sola fila) ----
+            // Tres segmentos medidos individualmente y concatenados centrados en cx:
+            //   [delta bold]  [" unitSuffix " regular gris]  [flecha regular coloreada]
+            // Usar measureText por segmento garantiza que ningún glifo unicode se solape.
+            val deltaBaseY = unitY + lineGap + deltaFontSize
+
+            val deltaPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                textAlign   = android.graphics.Paint.Align.LEFT
+                typeface    = android.graphics.Typeface.DEFAULT_BOLD
+                textSize    = deltaFontSize
+                color       = deltaColor.toArgb()
+            }
+            val unitInlinePaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                textAlign   = android.graphics.Paint.Align.LEFT
+                typeface    = android.graphics.Typeface.DEFAULT
+                textSize    = deltaFontSize * 0.82f   // ligeramente más pequeño que el delta
+                color       = onSurfaceVariant.copy(alpha = 0.60f).toArgb()
+            }
+            val arrowPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                textAlign   = android.graphics.Paint.Align.LEFT
+                typeface    = android.graphics.Typeface.DEFAULT
+                textSize    = deltaFontSize
+                color       = deltaColor.copy(alpha = 0.85f).toArgb()
             }
 
-            textPaint.color    = glucoseColor.toArgb()
-            textPaint.textSize = radius * 0.56f
-            val valueBaselineY = visualCenterY - (textPaint.ascent() + textPaint.descent()) / 2f
-            drawContext.canvas.nativeCanvas.drawText(displayValue, cx, valueBaselineY, textPaint)
+            if (deltaDisplay != null) {
+                val gap      = deltaFontSize * 0.20f
+                val unitText = " $unitSuffix "
+                val dW = deltaPaint.measureText(deltaDisplay)
+                val uW = unitInlinePaint.measureText(unitText)
+                val aW = arrowPaint.measureText(trendArrow)
+                val totalW = dW + uW + gap + aW
+                val x0 = cx - totalW / 2f
+                // baseline vertical: alinear las tres piezas a la misma línea de base
+                val unitBaselineShift = (deltaFontSize - deltaFontSize * 0.82f) * 0.5f
+                drawContext.canvas.nativeCanvas.drawText(deltaDisplay, x0,           deltaBaseY,                      deltaPaint)
+                drawContext.canvas.nativeCanvas.drawText(unitText,     x0 + dW,      deltaBaseY - unitBaselineShift,  unitInlinePaint)
+                drawContext.canvas.nativeCanvas.drawText(trendArrow,   x0 + dW + uW + gap, deltaBaseY,               arrowPaint)
+            } else {
+                // Sin delta: "mg/dL  →" centrado
+                val unitText = "$unitSuffix  "
+                val uW = unitInlinePaint.measureText(unitText)
+                val aW = arrowPaint.measureText(trendArrow)
+                val x0 = cx - (uW + aW) / 2f
+                drawContext.canvas.nativeCanvas.drawText(unitText,   x0,      deltaBaseY, unitInlinePaint)
+                drawContext.canvas.nativeCanvas.drawText(trendArrow, x0 + uW, deltaBaseY, arrowPaint)
+            }
 
-            textPaint.color    = onSurfaceVariant.toArgb()
-            textPaint.textSize = radius * 0.19f
-            textPaint.typeface = android.graphics.Typeface.DEFAULT
-            val unitBaselineY  = valueBaselineY + textPaint.descent() * 3.5f - textPaint.ascent()
-            drawContext.canvas.nativeCanvas.drawText("$unitSuffix  $trendArrow", cx, unitBaselineY, textPaint)
+            // ---- Línea 4: Antigüedad del dato ----
+            if (ageStr != null) {
+                val agePaint = android.graphics.Paint().apply {
+                    isAntiAlias = true
+                    textAlign   = android.graphics.Paint.Align.CENTER
+                    typeface    = android.graphics.Typeface.DEFAULT
+                    textSize    = ageFontSize
+                    color       = ageColor.copy(alpha = 0.65f).toArgb()
+                }
+                val ageY = deltaBaseY + lineGap * 0.8f + ageFontSize
+                drawContext.canvas.nativeCanvas.drawText(ageStr, cx, ageY, agePaint)
+            }
         }
     }
 }

@@ -653,6 +653,7 @@ implementation "androidx.appcompat:appcompat:1.6.1"
  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
   mobileImplementation 'androidx.health.connect:connect-client:1.1.0-rc03'
   mobileImplementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.1'
+  mobileImplementation 'com.google.android.material:material:1.13.0'
 
   // ── Compose (mobile flavor only) ──────────────────────────────────────────
   mobileImplementation platform('androidx.compose:compose-bom:2025.06.01')

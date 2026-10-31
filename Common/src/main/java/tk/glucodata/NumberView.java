@@ -1,4 +1,4 @@
-﻿/*      This file is part of Juggluco, an Android app to receive and display         */
+/*      This file is part of Juggluco, an Android app to receive and display         */
 /*      glucose values from Freestyle Libre 2 and 3 sensors.                         */
 /*                                                                                   */
 /*      Copyright (C) 2021 Jaap Korthals Altes <jaapkorthalsaltes@gmail.com>         */
@@ -694,6 +694,15 @@ public View addnumberview(MainActivity context) {
     
     if(SmallShowKeyboard&&smallScreen) {
         valueedit.requestFocus();
+        tk.glucodata.help.showkeyboard(context,valueedit);
+      }
+    else if(tk.glucodata.Applic.useVicoChart()) {
+        // In the Vico path the ComposeView holds IME focus; force the soft
+        // keyboard explicitly so the EditText can receive input.
+        valueedit.requestFocus();
+        context.getWindow().setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE |
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         tk.glucodata.help.showkeyboard(context,valueedit);
       }
     else

@@ -484,7 +484,9 @@ private fun DrawScope.drawCurrentReadingLabel(timestampMs: Long, cx: Float, cy: 
     // En portrait el punto actual suele estar en la zona superior del canvas (tiempo reciente = Y bajo).
     // Si el punto está en el 35% superior, colocamos la etiqueta DEBAJO para no salir del canvas.
     // En caso contrario la colocamos encima como siempre, con clamp al borde superior (margen 4dp).
-    val topMargin = 4.dp.toPx()
+    // topMargin 10 dp: deja aire entre el tooltip y el borde superior del canvas,
+    // evita que "24 ago 01:30" roce el marco de la sección de gráfico.
+    val topMargin = 10.dp.toPx()
     val rawY = when {
         cy - gapAbove - boxH < topMargin -> cy + gapAbove          // debajo del punto
         else                             -> cy - gapAbove - boxH   // encima del punto
