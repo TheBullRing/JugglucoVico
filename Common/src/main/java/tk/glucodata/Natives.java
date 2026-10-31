@@ -34,6 +34,19 @@ import tk.glucodata.nums.item;
 
 
 public class Natives  {
+    public static native ClarityStatus clarityStatus();
+    public static native int[] clarityCategories();
+    public static native String claritySetCategories(int[] categories,float[] weights);
+    public static native String clarityConfigure(boolean enabled,boolean libre3History,boolean numbers,long since);
+    public static native String clarityImport(byte[] data);
+    public static native String[] clarityLoginBegin(String country,String locale,String manufacturer,String model,String osVersion);
+    public static native String clarityLoginFinish(String callback);
+    public static native void clarityWake();
+
+    public static native String askChatGPT(android.app.Activity activity, String archiveURL, String existingChatURL);
+    public static native void stopAskChatGPT();
+    public static native String askChatGPTStatus();
+
     static final private String LOG_ID="Natives";
 //   static long numptr=0;
 static  {
@@ -67,6 +80,11 @@ public static native boolean hasBluetooth(byte[] sensorident,byte[] patchinfo);
 //    public static native void showlast();
 //    public static native void hidescanresults();
     public static native void resize(int width, int height,int initscreenwidth);
+//public static native void setDisplayRotation(int rotation,boolean reverseDefaultRotation);
+//public static native void setDisplayRotation(int rotation,boolean reverseDefaultRotation,boolean graphLockedToFirstLandscape);
+ public static native void setDisplayRotation(int rotation,boolean reverseDefaultRotation,boolean graphLockedToFirstLandscape,boolean graphUsesCurrentOrientationAsLandscape);
+
+public static native int getGraphRotationMode();
      public static native void initopengl(float small,float menu,float density,float head);
      public static native int setfilesdir(String dir,String country,String nativedir);
 //     public static native void calccurvegegs();
@@ -77,7 +95,7 @@ public static native void startsensors( );
 
 	public static native void setlocale(String loc,int sdk);
      public static native int step();
-    public static native int badscan(int kind);
+    public static native int badscan(int kind,String sensorid);
 //    public static native long lastpoll();
     //    public static native void clear();
     public static native void prevscr();
@@ -270,7 +288,29 @@ public static native String getbackuphostport(int pos);
 public static native String getbackuppassword(int pos);
 public static native boolean isWearOS(int pos);
 
-public static native int changebackuphost(int pos,String[] names,int nr,boolean detect,String port,boolean nums,boolean stream,boolean scans,boolean recover,boolean receive,boolean activeonly,boolean passiveonly,String pass,long starttime,String label,boolean testip,boolean hasname,String ICElabel,boolean side);
+public static native int changebackuphost(int pos,String[] names,int nr,boolean detect,String port,boolean nums,boolean stream,boolean scans,boolean recover,boolean receive,boolean activeonly,boolean passiveonly,String pass,long starttime,String label,boolean testip,boolean hasname,String ICElabel,boolean side,int transport,boolean bleclient);
+public static native int getbackuptransport(int pos);
+public static native boolean getbackupside(int pos);
+public static native boolean getbackupbleclient(int pos);
+public static native boolean getbackupblereverse(int pos);
+public static native boolean getbackupbleunproven(int pos);
+/**
+ * One-shot migration for pre-side phone/tablet mirror rows.
+ * Assigns side from the existing Scans send flag while preserving the
+ * already-stored local BLE role. It does not mark or unmark direction proof.
+ */
+public static native boolean setbackupbleclient(int pos,boolean bleclient);
+public static native boolean setbackupblereverse(int pos,boolean reverse);
+public static native boolean setbackupbleunproven(int pos,boolean unproven);
+public static native boolean setMirrorTransport(String label,int transport,boolean bleclient);
+public static native void setMirrorWearOS(int index);
+public static native void applyMirrorTransports();
+public static native void mirrorTransportReady(int localIndex,int remoteIndex,boolean phonePeer);
+public static native void mirrorTransportDisconnected(int localIndex,int remoteIndex);
+/** Current local TCP endpoints, for exchange only after an authenticated BLE handshake. */
+public static native byte[] getMirrorAddresses(int localIndex);
+/** Replace this mirror row's cached QR/IP candidates with a newer authenticated BLE update. */
+public static native boolean setMirrorAddresses(int localIndex,byte[] data);
 
 
 public static native boolean detectIP(int pos);
@@ -305,6 +345,8 @@ public static native String getreceiveport( );
 public static native void networkpresent( );
 public static native void networkabsent();
 public static native void resetnetwork();
+/** Probe cached TCP endpoints without leaving an active BLE/Message carrier. */
+public static native boolean probeMirrorTcp(int pos);
 public static native void setpaused(GlucoseCurve val);
 
 //public static native boolean usemeal();
@@ -465,8 +507,6 @@ public static native int getLibreVersion(long dataptr);
 public static native void USenabledStreaming(byte[] sensorident,byte[] jauth,byte[] address);
 public static native void closedynlib( );
 public static native strGlucose lastglucose();
-public static native byte[] getmynetinfo(String name,boolean create,int watchhassensor,boolean galaxy,int setnums);
-public static native boolean setmynetinfo(String name,byte[] jar,boolean galaxy);
 
 public static native long lastglucosetime( );
 public static native byte[] bytesettings();
@@ -538,6 +578,19 @@ public static native void askServerforAccountID();
 public static native long getlibreAccountIDnumber();
 public static native void setlibreAccountIDnumber(long num);
 
+public static native boolean getnewLibre3ReceiverIDreceived();
+public static native void setnewLibre3ReceiverIDreceived(boolean value);
+public static native boolean getnewLibre3Activation();
+public static native void setnewLibre3Activation(boolean value);
+public static native boolean getnewLibre3Takeover();
+public static native void setnewLibre3Takeover(boolean value);
+public static native long getnewLibre3ReceiverID();
+public static native void setnewLibre3ReceiverID(long value);
+public static native long getnewLibre3ReceiverGeneration();
+public static native boolean savenewLibre3ReceiverID(long value,long generation);
+public static native void libreReceiverInit(String path,byte[] privateKey,byte[] wrapKey) throws java.io.IOException;
+public static native byte[] libreReceiverCrypt(int operation,byte[] input,byte[] iv) throws java.io.IOException;
+
 public static native String getlibreAccountID( );
 
 public static native void setlibreUserToken(boolean l3, String UserToken);
@@ -557,11 +610,21 @@ public static native String getGuardianLastNameName( );
 
 
 //public static native long interpret3NFC1(byte[] b);
-public static native long interpret3NFC2(byte[] nfc1,byte[] b,long time);
+//public static native long interpret3NFC2(byte[] nfc1,byte[] b,long time);
+public static native String interpret3NFC2( byte[]  nfc1ar,byte[] jnfcout,long now,long[] longreturn);
 public static native long getLibre3secs(byte[]  nfc1ar);
 public static native long getLibre3Sensorptr(String sensorid,long starttime);
 public static native long getLibre3SensorptrPD(String sensorid,long starttime,byte[] pin,String deviceaddress);
 public static native long saveLibre3MinuteL(long sensorptr,byte[] mindata,long nowmsec);
+public static native long saveLingoMinuteL(long sensorptr,byte[] mindata,long nowmsec);
+public static native boolean saveLingoHistory(long sensorptr,byte[] history);
+public static native boolean saveLingoFastData(long sensorptr,byte[] fastdata);
+public static native byte[] lingoControlHistory(int arg,int from);
+public static native byte[] lingoClinicalControl(int arg,int from);
+/** Zero for Libre 3; otherwise the Lingo version, or -1 when unknown. */
+public static native int getLingoSecurityVersion(long sensorptr);
+/** Classify the already-read NFC patch info without writing to the sensor. */
+public static native int lingoPatchSecurityVersion(byte[] patchInfo);
 public static native boolean saveLibre3fastData(long sensorptr,byte[] mindata);
 public static native boolean saveLibre3History(long sensorptr,byte[] mindata);
 public static native int libre3EventLog(long sensorptr,byte[] logs);
@@ -594,18 +657,21 @@ public static native int startTimeIDsum(byte[] uit, long time, long accountID);
 
 static native long libre3BeginSecurityHandshake(long securityContext);
 static native void libre3FreeSecurityContext(long securityContext);
-static native int libre3LoadAppKeyAndSavedAuthorization(long securityContext, byte[] appPrivateKey, byte[] savedAuthorization);
+static native int libre3SelectAppKeyAndSavedAuthorization(long securityContext, int securityVersion, byte[] savedAuthorization);
 static native int libre3AcceptPatchCertificate(long securityContext, byte[] patchCertificate);
 static native byte[] libre3CreateEphemeralPublicKey(long securityContext);
 static native int libre3DeriveAuthorizationRoot(long securityContext, byte[] patchEphemeralPublicKey);
 static native byte[] libre3EncryptChallengeReply(long securityContext, byte[] nonce, byte[] plaintext);
 static native byte[] libre3DecryptChallengeResponse(long securityContext, byte[] nonce, byte[] ciphertext);
+static native byte[] libre3EmulatorDecryptReply(long context, byte[] nonce, byte[] ciphertext);
+static native byte[] libre3EmulatorEncryptResponse(long context, byte[] nonce, byte[] plaintext);
+static native byte[] libre3ExportChallengeContext(long securityContext);
 static native byte[] libre3ExportSavedAuthorization(long securityContext);
 
 
 public static native boolean getShownintro( );
 public static native void setShownintro(boolean val);
-public static native void setDevice(String mani,String model,int SDK_INT);
+public static native void saveDevice(String mani,String model,String product,int SDK_INT);
 public static native String getxDripTrendName(float rate);
 public static native boolean getkerfstokblack( );
 public static native void setkerfstokblack(boolean val);
@@ -616,6 +682,8 @@ public static native byte[] intDecrypt(long cryptptr, int kind,byte[] encrypted)
 public static native float thresholdchange(float drate);
 //public static native void enddebug();
 public static native boolean message(byte[] data);
+/** Route a Bluetooth-carried frame to the already authenticated local mirror row. */
+public static native boolean messageForMirror(int localIndex,byte[] data);
 public static native boolean getBlueMessage(int index);
 public static native void setBlueMessage(String name,boolean val);
                 
@@ -668,8 +736,8 @@ public static native int getsslport( );
 public static native void sethttpport(int val);
 public static native int gethttpport( );
 
-public static native void setsaytreatments(boolean val);
-public static native boolean getsaytreatments( );
+public static native void setGiveAmounts(boolean val);
+public static native boolean getGiveAmounts( );
 public static native boolean getuseuploader( );
 public static native String getnightuploadurl( );
 public static native String getnightuploadsecret( );
@@ -679,6 +747,10 @@ public static native void resetuploader( );
 public static native void setAndroid13(boolean val);
 public static native boolean getAndroid13( );
 public static native long[] getlastGlucose( );
+// Uncalibrated records: Unix seconds, mg/L, rate*100, Libre 3 minute (-1 otherwise), source start.
+public static native long[] libre3EmulatorHistory(long fromSeconds,long throughSeconds);
+public static native long[] libre3EmulatorStream(long fromSeconds,long throughSeconds);
+public static native long[] libre3EmulatorLatest();
 public static native void setwatchdrip(boolean val);
 public static native boolean getwatchdrip( );
 
@@ -1004,6 +1076,8 @@ public static native void setManualWarmupMinutes(long sensorptr,int min);
 public static native int getMinimalWarmup(long dataptr);
 
 public static native GS3Data gs3Glucose(long dataptr, byte[] value,long mmsec);
+public static native void gs3SetDeviceInfo(long dataptr, String manufacturer, String software);
+public static native boolean gs3IsV3(long dataptr);
 public static native String gs3nfc(byte[] scan);
 public static native String md5sum(String input);
 public static native void saveGS3id(long id);
@@ -1062,6 +1136,18 @@ public static native void testLibre3( );
 
 public static native void setalarmSoundType(int val);
 public static native int getalarmSoundType( );
+public static native void setRotate(boolean val);
+public static native boolean getRotate( );
+
+
+public static native void setRotateText(boolean val);
+public static native boolean getRotateText( );
+
+
+public static native byte[] getmynetinfo(String name,boolean create,int watchhassensor,boolean galaxy,int setnums,boolean phonepeer);
+public static native String setmynetinfo(String name,byte[] jar,boolean galaxy,boolean phonepeer);
+public static native void retryMessageConnections(String skipName);
+public static native void resetMessageConnection(String name);
+
+
 }
-
-

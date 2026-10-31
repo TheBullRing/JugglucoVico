@@ -95,12 +95,12 @@ jugglucotext detext {
 .duration="Dauer: %.1f Tage",
 .timeactive="%.1f%% der Zeit aktiv",
 .nrmeasurement="Anzahl Messungen: %d",
-.EstimatedA1C="Geschätzter HbA1c: %.1f%% (%d mmol/mol)",
+.EstimatedA1C="uGMI ≈ Geschätzter HbA1c: %.1f%% (%d mmol/mol)",
 .GMI="Glucose Management Indicator: %.1f%% (%d mmol/mol)",
 .SD="SD: %.2f",
 .glucose_variability="Glukosevariabilität: %.1f%%",
       .menustr0={
-"System UI",
+"ChatGPT",
 "Menus",
 "Uhren",
 "Sensor",
@@ -127,7 +127,7 @@ detext.newamount,
 "Sprechen",
 "Schweben"
 },
-.menustr2={"LetzterScan","Scans","Stream","History","Mengen","Mahlzeiten","Dunkelmodus"},
+.menustr2={"System UI","Scans","Stream","History","Mengen","Mahlzeiten","Dunkelmodus"},
 .menustr3= {hourminstr,"Suche", "Datum", "Vortag", "Tag später", "Woche zurück", "Woche später"},
 
 #endif //INJUGGLUCO

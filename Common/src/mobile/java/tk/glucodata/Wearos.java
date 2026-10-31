@@ -47,27 +47,52 @@ import androidx.appcompat.app.AlertDialog;
 import com.google.android.gms.wearable.Node;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 
 
 class Wearos {
 static private final String LOG_ID="Wearos";
 
 
-private static    ArrayList<Node> getnodeslist() {
+private static final class WatchTarget {
+    final String label;
+    final String displayName;
+    final boolean galaxy;
+
+    WatchTarget(Node node) {
+        label=node.getId();
+        displayName=node.getDisplayName();
+        galaxy=isGalaxy(node);
+    }
+
+    WatchTarget(String label) {
+        this.label=label;
+        displayName=label;
+        galaxy=Applic.ALLGALAXY;
+    }
+}
+
+private static ArrayList<WatchTarget> getnodeslist() {
+    var targets=new LinkedHashMap<String,WatchTarget>();
     var send=tk.glucodata.MessageSender.getMessageSender();
     if(send!=null) {
         var nodes=send.getNodes();
         if(nodes!=null) {
-            return new ArrayList<>(nodes);
+            for(var node:nodes)
+                targets.put(node.getId(),new WatchTarget(node));
         }
      }
-   return null;
+    // An authenticated BLE watch remains controllable when Google discovery
+    // is unavailable. Merge by the exact mirror label to keep watches distinct.
+    for(var label:BleMirror.wearControlLabels())
+        targets.putIfAbsent(label,new WatchTarget(label));
+    return new ArrayList<>(targets.values());
    }
-static Spinner mkspinner(MainActivity context, ArrayList<Node> nodeslist,IntConsumer setpos) {
+static Spinner mkspinner(MainActivity context, ArrayList<WatchTarget> nodeslist,IntConsumer setpos) {
     var spin=new Spinner(context);
-    var adap = new RangeAdapter<com.google.android.gms.wearable.Node>(nodeslist, context, node -> {
+    var adap = new RangeAdapter<WatchTarget>(nodeslist, context, node -> {
         if (node != null)
-            return node.getDisplayName()+" - "+node.getId();
+            return node.displayName.equals(node.label)?node.label:node.displayName+" - "+node.label;
         return "Error";
         });
     spin.setAdapter(adap);
@@ -87,7 +112,11 @@ static Spinner mkspinner(MainActivity context, ArrayList<Node> nodeslist,IntCons
     }
 
 
-static void remake(CheckDirectionRadio[] sensordirect, CheckDirectionRadio[] nswitch,  Node node,boolean[] direct) {
+static void remake(CheckDirectionRadio[] sensordirect, CheckDirectionRadio[] nswitch,  WatchTarget node,boolean[] direct) {
+    remake(sensordirect,nswitch,node,direct,true);
+    }
+
+private static void remake(CheckDirectionRadio[] sensordirect, CheckDirectionRadio[] nswitch, WatchTarget node,boolean[] direct,boolean setChoices) {
     int dirval,numsval;
     if(node==null) {
         dirval=-1;
@@ -109,14 +138,17 @@ static void remake(CheckDirectionRadio[] sensordirect, CheckDirectionRadio[] nsw
     if(dirval<0)  {
         for(var v:sensordirect) {
             v.setEnabled(false);
-            v.setChecked(false);
+            if(setChoices)
+                v.setChecked(false);
             }
         direct[0]=false;
         }
     else  {
         boolean watchsensor=dirval!=0; 
-        sensordirect[0].setChecked(dirval==0);
-        sensordirect[1].setChecked(watchsensor);
+        if(setChoices||(!sensordirect[0].isChecked()&&!sensordirect[1].isChecked())) {
+            sensordirect[0].setChecked(dirval==0);
+            sensordirect[1].setChecked(watchsensor);
+            }
         direct[0]=watchsensor;
         for(var v:sensordirect) {
             v.setEnabled(true);
@@ -125,12 +157,15 @@ static void remake(CheckDirectionRadio[] sensordirect, CheckDirectionRadio[] nsw
     if(numsval<0)  {
         for(var n:nswitch) {
             n.setEnabled(false);
-            n.setChecked(false);
+            if(setChoices)
+                n.setChecked(false);
             }
         }
     else  {
-        nswitch[0].setChecked(numsval==0);
-        nswitch[1].setChecked(numsval!=0);
+        if(setChoices||(!nswitch[0].isChecked()&&!nswitch[1].isChecked())) {
+            nswitch[0].setChecked(numsval==0);
+            nswitch[1].setChecked(numsval!=0);
+            }
         for(var n:nswitch)
             n.setEnabled(true);
         }
@@ -178,16 +213,18 @@ static public void show(MainActivity context,View parent) {
        }
    final var nodeslist=nodeslistin;
    boolean[] watchsensor={false};
+   boolean[] refreshing={false};
    IntConsumer setpos= pos-> {
             try {
                 nodenumptr[0]=pos;
                 if(nodeslist!=null&&nodeslist.size()>pos) {
-                    Node node=pos<0?null:nodeslist.get(pos);
+                    WatchTarget node=pos<0?null:nodeslist.get(pos);
                     remake(sswitch, nswitch,   node,watchsensor);
                     defaults.setEnabled(true);
                     if(node!=null) {  
                        Consumer<View> switched= v-> {
-                            defaults.setEnabled(false);
+                            if(!refreshing[0])
+                                defaults.setEnabled(false);
                           };
                         Object[] switcher={switched}; 
                         Backup.setradiotest(nswitch,switcher);
@@ -239,6 +276,28 @@ static public void show(MainActivity context,View parent) {
                     Gravity.CENTER_HORIZONTAL| Gravity.CENTER);
 
     context.addMyContentView(layout, params);
+    // Synchronization can finish after the spinner's initial selection. Keep
+    // the gate current without replacing choices the user has already edited.
+    Runnable refreshStatus=new Runnable() {
+        @Override public void run() {
+            if(!layout.isAttachedToWindow())
+                return;
+            int pos=nodenumptr[0];
+            if(pos>=0&&pos<nodeslist.size()) {
+                refreshing[0]=true;
+                try {
+                    remake(sswitch,nswitch,nodeslist.get(pos),watchsensor,defaults.isEnabled());
+                    }
+                catch(Throwable e) {
+                    Log.stack(LOG_ID,e);
+                    }
+                finally {
+                    refreshing[0]=false;
+                    }
+                }
+            layout.postDelayed(this,1000L);
+            }
+        };
     //context.addMyContentView(layout, new ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 //    layout.post(layout::requestLayout);
     Ok.setOnClickListener(v -> {
@@ -252,9 +311,16 @@ static public void show(MainActivity context,View parent) {
                 if(nodenumptr[0]>=0) {
                         var node=nodeslist.get(nodenumptr[0]);
                         var name=makenodename(node);
-                        final boolean wasdirect=watchsensor[0]; 
+                        int currentDirect=Natives.directsensorwatch(name);
+                        if(currentDirect<0||Natives.hasWatchNums(name)<0||
+                                (currentDirect==0&&!Natives.getusebluetooth())) {
+                            Log.i(LOG_ID,"Waiting for Wear mirror synchronization before changing "+name);
+                            Natives.switchSync();
+                            return;
+                            }
+                        final boolean wasdirect=currentDirect!=0;
                         {if(doLog) {Log.i(LOG_ID,"watch "+name+" "+"nums "+watchnums+" direct "+watchdirect+ " was "+wasdirect);};};
-                        byte[] netinfo=Natives.getmynetinfo(name,true,watchdirect?1:-1,isGalaxy(node),watchnums?1:-1);
+                        byte[] netinfo=Natives.getmynetinfo(name,true,watchdirect?1:-1,node.galaxy,watchnums?1:-1,false);
                         Runnable doswitch=()-> {
                             Applic.switchbluetooth(name,netinfo,watchdirect);
                             };
@@ -264,12 +330,7 @@ static public void show(MainActivity context,View parent) {
                                 }
                             else {
                                 if(wasdirect&&!watchdirect)  {
-                                   if(sendbluetooth( name,netinfo,false)) {
-                                        var unpair=new UnpairOverlayHost(context,R.string.releasingsensor);
-                                        unpair.postMessage(context.getString(R.string.unpairingwatch));
-                                        context.unpairer=unpair;
-                                        context.doswitch=()->Applic.setbluetooth(context,true);
-                                        }
+                                    returnSensorToPhone(context,name,netinfo);
                                     }
                                 else
                                     doswitch.run();
@@ -298,9 +359,9 @@ static public void show(MainActivity context,View parent) {
                 var nod=nodeslist.get(nodenumptr[0]);
                 String name=makenodename(nod);
                 Runnable setdef=()-> {
-                    sender.toDefaults(nod);
+                    sender.toDefaults(name);
                     {if(doLog) {Log.i(LOG_ID,"set to default "+name);};};
-                    Natives.setWearosdefaults(name,isGalaxy(nod));
+                    Natives.setWearosdefaults(name,nod.galaxy);
                     var main=MainActivity.thisone;
                     Applic.setbluetooth(main==null?Applic.app:main,true);
                     context.doonback();
@@ -321,15 +382,39 @@ static public void show(MainActivity context,View parent) {
          });
 */
     context.setonback(()-> { 
+        layout.removeCallbacks(refreshStatus);
         EnableControls(parent,true);
         removeContentView(layout);
         context.hideSystemUI(); }
         );
+    if(!nodeslist.isEmpty()) {
+        layout.postDelayed(refreshStatus,1000L);
+        Natives.switchSync();
+        }
 
     }
 static String makenodename(Node node) {
     return node.getId();
     }
+
+static String makenodename(WatchTarget target) {
+    return target.label;
+    }
+
+private static void returnSensorToPhone(MainActivity context,String name,byte[] netinfo) {
+    // Install the reply handler before sending: an authenticated BLE peer can
+    // answer immediately, before sendbluetooth() returns to this UI thread.
+    var unpair=new UnpairOverlayHost(context,R.string.releasingsensor);
+    unpair.postMessage(context.getString(R.string.unpairingwatch));
+    context.unpairer=unpair;
+    context.doswitch=()->Applic.setbluetooth(context,true);
+    if(!sendbluetooth(name,netinfo,false)) {
+        context.unpairer=null;
+        context.doswitch=null;
+        unpair.postFinished(context.getString(R.string.failed),false);
+        unpair.postCloser();
+    }
+}
 
 
 
@@ -359,7 +444,4 @@ static void sendinitwatchapp(Node nod) {
       sender.startWearOSActivity(nodeName);
       }
 }
-
-
-
 

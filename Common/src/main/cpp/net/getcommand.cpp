@@ -24,6 +24,7 @@
 #include <string.h>
        #include <unistd.h>
 #include "comtypes.hpp"
+#include "mirrorvalidate.hpp"
 #include "receive.hpp"
 #include "passhost.hpp"
 #include "makerandom.hpp"
@@ -32,6 +33,7 @@
 #include "datbackup.hpp"
 #include "aligner.hpp"
 #include "mirrorerror.h"
+#include "activity/mirror.hpp"
 
 #define lerrortag(...) lerror("getcommands: " __VA_ARGS__)
 #define LOGGERTAG(...) LOGGER("getcommands: " __VA_ARGS__)
@@ -111,6 +113,7 @@ static            bool savefileonce(const struct fileonce_t *gegs);
 
 
 extern bool javaUpdateDevices();
+extern void setusedsensors() ;
 static bool updateDevices() {
     LOGAR("before deletelast()");
     sensors->deletelast();
@@ -118,7 +121,7 @@ static bool updateDevices() {
     sensors->setindices();
     backup->resendResetDevices();
     sendstartsensors(sensors->last());
-     
+    setusedsensors();
     return  javaUpdateDevices();
     }
 
@@ -171,12 +174,15 @@ for(int it=0;it<len;) {
             };break;
         case sopen: 
             {
+            if(len-it<int(sizeof(fileopen)))return {it+int(sizeof(fileopen)),sizeof(fileopen)};
             struct fileopen *com=reinterpret_cast<fileopen *>(data);
-            comlen=sizeof(struct fileopen)+com->len+1;
+            if(com->len>4096)return {-1,0};
+            comlen=aligner<4>(sizeof(struct fileopen)+com->len+1);
             addlen(it,comlen);
             if(it>len) {
                 return {it,comlen};
                 }
+            if(!mirrorvalidate::filename(com->name,com->len+1))return {-1,0};
             ret=openfile(ctx,com->name);
             break;};
         case smklen: 
@@ -205,7 +211,10 @@ for(int it=0;it<len;) {
             ret=backupnuminit(reinterpret_cast<const numinit *>(data));
             };break;
         case snums: {
+            if(len-it<int(sizeof(numsend)))return {it+int(sizeof(numsend)),sizeof(numsend)};
             numsend *numgeg=reinterpret_cast<numsend *>(data);
+            if(!numgeg->nr||numgeg->dbase>1||
+               !mirrorvalidate::length(numgeg->totlen,sizeof(numsend)+8,it))return {-1,0};
             comlen=numgeg->totlen;
             addlen(it,comlen);
             if(it>len) {
@@ -215,8 +224,12 @@ for(int it=0;it<len;) {
             };break;
         case swrite: 
             {
+            if(len-it<int(sizeof(offwrite)))return {it+int(sizeof(offwrite)),sizeof(offwrite)};
             struct offwrite *wcom=reinterpret_cast<struct offwrite*>(data);
-            comlen=sizeof(struct offwrite)+wcom->len;
+            if(wcom->len>mirrorvalidate::maxCommand-sizeof(offwrite)||wcom->off>INT_MAX||
+               wcom->len>uint32_t(INT_MAX)-wcom->off)return {-1,0};
+            comlen=aligner<4>(sizeof(struct offwrite)+wcom->len);
+            if(!mirrorvalidate::length(comlen,sizeof(offwrite),it))return {-1,0};
             addlen(it,comlen);
             if(it>len) {
                 return {it,comlen};
@@ -330,10 +343,12 @@ extern                bool updateDevices() ;
             if(it>len)
                 return {it,minlen};
             struct askfile *ask=reinterpret_cast<struct askfile *>(data);
-            addlen(it,ask->namelen);
-            if(it>ask->len) {
-                return {it,aligner<4>(minlen+ask->namelen)};
-                }
+            if(ask->namelen>4096||ask->len>mirrorvalidate::maxCommand||
+               ask->off>INT_MAX||ask->len>uint32_t(INT_MAX)-ask->off)return {-1,0};
+            const int requestlen=aligner<4>(minlen+ask->namelen);
+            it+=requestlen-minlen;
+            if(it>len)return {it,requestlen};
+            if(!mirrorvalidate::filename(ask->name,ask->namelen))return {-1,0};
             ret=sendfile(ctx,ask->name,ask->off,ask->len);
             };
             break;
@@ -351,23 +366,33 @@ extern                bool updateDevices() ;
             ret=r_noacksendcommand(ctx, reinterpret_cast<uint8_t*>(&last),sizeof(last)) ;
             }; break;
 
+        case sactivitychunk: {
+            if(len-it<int(sizeof(activitychunk_t)))return {it+int(sizeof(activitychunk_t)),sizeof(activitychunk_t)};
+            const auto *chunk=reinterpret_cast<const activitychunk_t*>(data);
+            if(chunk->reserved||!mirrorvalidate::length(chunk->totlen,sizeof(activitychunk_t)+1,it)||
+               chunk->totlen>sizeof(activitychunk_t)+juggluco::activity::mirror::chunkBytes)return {-1,0};
+            comlen=aligner<4>(chunk->totlen);
+            addlen(it,comlen);
+            if(it>len)return {it,comlen};
+            extern bool receiveActivityMirror(const uint8_t*,size_t);
+            ret=activityChunks.append(chunk->size,chunk->offset,
+                {chunk->data,size_t(chunk->totlen)-sizeof(activitychunk_t)},receiveActivityMirror);
+            break;
+        }
         case sfileonce:
             {
             LOGARTAG("fileonce");
-            int tolen=offsetof(fileonce_t,nr);
+            if(len-it<int(sizeof(fileonce_t)))return {it+int(sizeof(fileonce_t)),sizeof(fileonce_t)};
             const fileonce_t *gegs=reinterpret_cast<const fileonce_t *>(data);
-            if(len>(it+tolen)) {
-                comlen=gegs->totlen;
-                }
-            else {
-                comlen=sizeof(fileonce_t);
-                }
+            if(!mirrorvalidate::length(gegs->totlen,sizeof(fileonce_t),it))return {-1,0};
+            comlen=aligner<4>(gegs->totlen);
             addlen(it,comlen);
             if(it>len) {
                 logprint("too small %d\n",len);
                 return {it,comlen};
                 }
 
+            if(!mirrorvalidate::file(*gegs,gegs->totlen))return {-1,0};
             ret=savefileonce(gegs);
             } break;
         default:;
@@ -391,6 +416,8 @@ struct senddata_deleter { // deleter
 };
  
 bool    Connect::getcommandsnopass(passhost_t *host) {
+    activityChunks.reset();
+    destruct chunksGuard([this]{activityChunks.reset();});
     int allindex=gethostindex(host);
     auto &status=mirrorstatus[allindex].receive;
     status.running(true);
@@ -410,7 +437,7 @@ bool    Connect::getcommandsnopass(passhost_t *host) {
     while(true) {
         LOGARTAG("voor recv");
         int len=r_recvni(com+start,maxcom-start);
-        if(!connections[allindex]) {
+        if(!getconnection(allindex)) {
             LOGGER("getcommandsnopass no connection %d\n",allindex);
             return false;
             }
@@ -480,6 +507,8 @@ bool    Connect::getcommandsnopass(passhost_t *host) {
 constexpr int MAXDATA=1024*1024*256;
 
  bool Connect::getcom( passhost_t *host,ascon_aead_ctx_t *ctx) {
+    activityChunks.reset();
+    destruct chunksGuard([this]{activityChunks.reset();});
     int allindex=gethostindex(host);
     auto &status=mirrorstatus[allindex].receive;
     status.running(true);
@@ -533,7 +562,7 @@ constexpr int MAXDATA=1024*1024*256;
         const int totlen=(intdatlen<16?16:intdatlen);
         if(totlen>maxcom) {
             senddata_t *newbuf= new (maxalign,std::nothrow) senddata_t [totlen];
-            if(!uit) {
+            if(!newbuf) {
             savemessage(host,"Out of Memory?");
                 sleep(1);
                 return false;
@@ -799,6 +828,14 @@ static bool savefileonce(const struct fileonce_t *gegs) {
     const int nr=gegs->nr;
     const uint8_t *start=reinterpret_cast<const uint8_t*>(&gegs->gegs[nr]);
     const char *name=reinterpret_cast<const char *>(start);
+    if(gegs->namelen==sizeof(juggluco::activity::mirror::filename)&&
+          uint64_t(sizeof(fileonce_t))+uint64_t(nr)*sizeof(datel)+gegs->namelen<=uint64_t(gegs->totlen)&&
+          !memcmp(name,juggluco::activity::mirror::filename,sizeof(juggluco::activity::mirror::filename))) {
+        if(nr!=1||gegs->gegs[0].off!=0||gegs->gegs[0].len<0||
+              uint64_t(sizeof(fileonce_t))+sizeof(datel)+gegs->namelen+uint64_t(gegs->gegs[0].len)>uint64_t(gegs->totlen))return false;
+        extern bool receiveActivityMirror(const uint8_t*,size_t);
+        return receiveActivityMirror(start+gegs->namelen,gegs->gegs[0].len);
+    }
     int fp=filedata.open(name);
     LOGGERTAG("savefileonce %s %d show=%d\n",name,nr, (gegs->dowith&startcalibratedupdate));
     if(fp<0)
@@ -813,34 +850,33 @@ static bool savefileonce(const struct fileonce_t *gegs) {
             }
         start+=gegs->gegs[i].len;
         }
-//    fdatasync(fp);
     }
-    if((gegs->dowith&startcalibratedupdate)==startcalibratedupdate) {
-        const auto [sendindex,startpos,history]= getcaliinfo(gegs,start);
-        setcalibratedstart(sendindex,startpos,history);
-/*
-        int namelen=gegs->namelen-1;
-        pathconcat fullpathin{filedata.getbase(),std::string_view(name,namelen)};
-        strsepconcat fullpathout{"",fullpathin,"tmp"};
-        const auto copyOptions = std::filesystem::copy_options::overwrite_existing;
-        std::error_code errorcode;
-        std::filesystem::path in(fullpathin.begin(),fullpathin.end());
-        std::filesystem::path out(fullpathout.begin(),fullpathout.end());
-        std::filesystem::copy_file(in,out,copyOptions,errorcode );
-        LOGGER("copy_file %s %s\n",fullpathin.data(),fullpathout.data()); */
-        }
-     else {
-        if((gegs->dowith&streamupdatebit)==streamupdatebit) {
-                const auto [sendindex,startpos]=getstartinfo(gegs,start);
-                processglucosevalue(sendindex,startpos);
+    if(const auto dowith=gegs->dowith) {
+        if((dowith&startcalibratedupdate)==startcalibratedupdate) {
+            const auto [sendindex,startpos,history]= getcaliinfo(gegs,start);
+            setcalibratedstart(sendindex,startpos,history);
+            }
+         else {
+            if((dowith&streamupdatebit)==streamupdatebit) {
+                    const auto [sendindex,startpos]=getstartinfo(gegs,start);
+                    processglucosevalue(sendindex,startpos);
 
-                }
-        else {
-                if((gegs->dowith&starthistoryupdate)==starthistoryupdate) {
-                        const auto [sendindex,startpos]=getstartinfo(gegs,start);
-                        sethistorystart(sendindex,startpos);
-                        }
-             }
+                    }
+            else {
+                    if((dowith&starthistoryupdate)==starthistoryupdate) {
+                            const auto [sendindex,startpos]=getstartinfo(gegs,start);
+                            sethistorystart(sendindex,startpos);
+                            }
+                 }
+            
+           }
+        }
+    else {
+        if(nr==4&&!memcmp(name,settingsdat,sizeof(settingsdat)-1)) {
+            extern void askReinitScriptFonts();
+            askReinitScriptFonts();
+             
+            }
         }
     LOGARTAG("savedata success");
 #ifdef WEAROS

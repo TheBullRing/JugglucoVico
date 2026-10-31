@@ -175,6 +175,8 @@ Sensors(MainActivity act,boolean givehelp,boolean select) {
         public  void onProgressChanged (SeekBar seekBar, int progress, boolean fromUser) {
             var warmup=progressToValue(progress,minvalue);
             minutes.setText(MessageFormat.format(prefix, warmup));
+            if(warmup<=minvalue)
+                warmup=0;
             Natives.setManualWarmupMinutes(sensorptr,warmup);
             act.requestRender();
             }
@@ -250,7 +252,8 @@ Sensors(MainActivity act,boolean givehelp,boolean select) {
        scroll.setScrollbarFadingEnabled(true);
        scroll.setVerticalScrollBarEnabled(Applic.scrollbar);
         if(!isWearable) {
-            layout.setPadding((int)(GlucoseCurve.metrics.density*10),0,(int)(GlucoseCurve.metrics.density*5),(int)(GlucoseCurve.metrics.density*5.0));
+          layout.setPadding((int)(GlucoseCurve.metrics.density*10),0,(int)(GlucoseCurve.metrics.density*5),(int)(GlucoseCurve.metrics.density*5.0));
+         
             }
          else {
 
@@ -273,6 +276,7 @@ Sensors(MainActivity act,boolean givehelp,boolean select) {
 
 private static void useAgain(MainActivity act,long sensorptr) {
     if(Natives.useAgain(sensorptr)) {
+           SensorLifecycle.added(sensorptr);
            var res=SensorBluetooth.updateDevices();
            SuperGattCallback.glucosealarms.setLossAlarm();
            if(res) {
@@ -305,14 +309,7 @@ static    void show(MainActivity act,String text, long sensorptr) {
    ViewGroup.LayoutParams params;
     if(!isWearable) {
         scroll.setBackgroundResource(R.drawable.dialogbackground);
-  //      scroll.measure(WRAP_CONTENT, WRAP_CONTENT);
- //       var width=GlucoseCurve.getwidth();
-//        scroll.setX((width-scroll.getMeasuredWidth()+MainActivity.systembarLeft-MainActivity.systembarRight)*.5f);
-        params =
-            new FrameLayout.LayoutParams(
-                    WRAP_CONTENT,
-                    WRAP_CONTENT,
-                    Gravity.CENTER_HORIZONTAL);
+        params = new FrameLayout.LayoutParams( WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER|Gravity.CENTER_HORIZONTAL);
         }
     else {
          int param=isWearable?MATCH_PARENT:WRAP_CONTENT;
@@ -321,13 +318,11 @@ static    void show(MainActivity act,String text, long sensorptr) {
         }
 
    act.addMyContentView(scroll, params);
-//    act.addMyContentView(sensors.viewgroup, new ViewGroup.LayoutParams(param,param));
-    MainActivity.setonback(() -> {
+   MainActivity.setonback(() -> {
             removeContentView(sensors.viewgroup);
             act.sensorsVisible=false;
             });
      }
 
 }
-
 

@@ -21,7 +21,11 @@
 
 #ifndef WEAROS
 #include "settings/settings.hpp"
+#if defined(__ANDROID__) && !defined(WEAROS)
+#include "jgchat/web_auth_path.hpp"
+#endif
 #include <charconv>
+#include <cmath>
 #include <inttypes.h>
 #include <system_error>
 #include <utility>
@@ -44,6 +48,10 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <limits.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <errno.h>
 
@@ -75,6 +83,7 @@ typedef std::conditional<sizeof(long long) == sizeof(int64_t), long long, int64_
 #include "curve/jugglucotext.hpp"
 //extern jugglucotext engtext;
 using namespace std::literals;
+extern std::string_view globalbasedir;
 constexpr const int maxnighterror=200;
 char nighterrorbuf[maxnighterror]="";
 #include "mirrorerror.h"
@@ -145,6 +154,7 @@ static bool startwatchserver(bool secure,int port,int *sockptr) {
    }
 
 #include <thread>
+#include <chrono>
 #include <algorithm>
 #include "sensoren.hpp"
 
@@ -235,7 +245,7 @@ void startwatchthread(int port) {
    }
 extern void stopwatchthread() ;
 void stopwatchthread() {
-        stopsummarythread();
+   stopsummarythread();
    stopconnection=true;
    shutdown(xdripserversock,SHUT_RDWR);
 #ifdef USE_SSL
@@ -363,10 +373,10 @@ static bool sendall(int sock ,const char *buf,int buflen) {
         for(const char *it=buf;(itlen=send(sock,it,left,0))<left;) {
           int waser=errno;
           LOGGERWEB("len=%d\n",itlen);
-          if(itlen<0) {
+          if(itlen<=0) {
                errno=waser;
                flerror("send(%d,%p,%d)",sock,it,left);
-               if(waser==EINTR)
+               if(itlen<0&&waser==EINTR)
                   continue;
                return false;
                }
@@ -376,6 +386,15 @@ static bool sendall(int sock ,const char *buf,int buflen) {
         LOGARWEB("success sendall");
         return true;
         }
+
+static bool plainlivewrite(void *context,const char *data,int len) {
+   return sendall(*static_cast<int *>(context),data,len);
+   }
+
+static bool plainlivestopped(void *) {
+   return stopconnection;
+   }
+
 bool watchcommands(char *rbuf,int len,recdata *outdata,bool secure) ;
 static bool plainwatchcommands(int sock) {
    constexpr const int RBUFSIZE=4096;
@@ -398,14 +417,21 @@ static bool plainwatchcommands(int sock) {
       }
    bool res=watchcommands(rbuf, len,&outdata,false); 
    bool res2=sendall( sock ,outdata.data(),outdata.size()) ;
+   const bool livestream=outdata.livestream;
+   const livestreamoptions streamoptions=outdata.streamoptions;
    LOGGERWEB("plainwatchcommands: delete outdata.allbuf=%p\n",outdata.allbuf);
    delete[] outdata.allbuf;
+   if(res&&res2&&livestream)
+      res2=streamlive(&sock,plainlivewrite,plainlivestopped,streamoptions);
    return res&&res2&&!stopconnection;
    }
 
 
+static constexpr size_t maxoriginlen=512;
+static constexpr int webheaderreserve=768;
+
 static bool alloworigin(std::string_view origin) {
-       return settings->data()->remotelyxdripserver||(origin.size()>0&&(origin[0]=='*'||settings->data()->apisecretlength>7));
+       return origin.size()<=maxoriginlen&&(settings->data()->remotelyxdripserver||(origin.size()>0&&(origin[0]=='*'||settings->data()->apisecretlength>7)));
    }
 
 static bool mkhtml(recdata *outdata,std::string_view origin,std::string_view header,std::string_view bodyhtml,bool dark=false) {
@@ -682,11 +708,11 @@ Advantage: gets new token earlier in case Juggluco restarted. Juggluco doesn't s
 */
 
 static bool authorization(bool hassecret,std::string_view origin,recdata *outdata) {
-      outdata->allbuf=new(std::nothrow) char[512+400];
+      outdata->allbuf=new(std::nothrow) char[webheaderreserve+762];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-       char *start=outdata->allbuf+150;
+       char *start=outdata->allbuf+webheaderreserve;
    char *outiter=start;
 
    uint32_t now=time(nullptr);
@@ -782,6 +808,7 @@ class AddHost {
         return bufptr; 
         }
     };
+    /*
 static bool givesite(recdata *outdata,std::string_view hostname,bool secure) {
     static constexpr const char refresh[]{ R"(<meta http-equiv="refresh" content="0; url=https://www.juggluco.nl/Juggluco/webserver.html?urlstart=http)"};
     static constexpr const char endrefresh[]{ R"(">)"};
@@ -793,9 +820,23 @@ static bool givesite(recdata *outdata,std::string_view hostname,bool secure) {
     addar(bufptr,endrefresh);
     assert((bufptr-buf)==totlen);
     return mkhtml(outdata,"*"sv,{buf,totlen},""sv);
-   }
-//{"settings":{"units":"mmol","thresholds":{"bgHigh":169,"bgLow":70}}}
+   } */
 
+static bool givesite(recdata *outdata,std::string_view hostname,bool secure) {
+    AddHost addhost(hostname,secure);
+    constexpr const char http[]= "HTTP/1.1 308 Permanent Redirect\r\nLocation: " R"(https://www.juggluco.nl/Juggluco/webserver.html?urlstart=http)";
+    constexpr const int httpsize=sizeof(http)-1;
+    constexpr const char endredir[]="\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\n\r\n";
+    constexpr const int  endlen=sizeof(endredir);
+    const int alllen=httpsize+addhost.size()+endlen;
+    char *bufuit=new char[alllen];
+    outdata->start=outdata->allbuf=bufuit;
+    memcpy(bufuit,http,httpsize);
+    char *endhost=addhost.add(bufuit+httpsize);
+    memcpy(endhost,endredir,endlen);
+    outdata->len=alllen-1;
+    return true;
+    }
 
 inline unsigned char viewerhtml[] = {
 #embed "viewer.html" prefix('H','T','T','P','/','1','.','1',' ','2','0','0',' ','O','K','\r','\n', 'A','c','c','e','s','s','-','C','o','n','t','r','o','l','-','A','l','l','o','w','-','O','r','i','g','i','n',':',' ','*','\r','\n', 'C','o','n','t','e','n','t','-','T','y','p','e',':',' ','t','e','x','t','/','h','t','m','l',';',' ','c','h','a','r','s','e','t','=','u','t','f','-','8','\r','\n', 'C','o','n','t','e','n','t','-','L','e','n','g','t','h',':',' ', '1','7','4','0','2', '\r','\n', '\r','\n',) 
@@ -811,11 +852,11 @@ static bool giveviewer(recdata *outdata) {
 static bool givedripstatus(std::string_view origin,recdata *outdata) {
    constexpr const char format[]= R"({"settings":{"units":"%s","thresholds":{"bgHigh":%.0f,"bgLow":%.0f}}})";
    constexpr const int len=sizeof(format)+6+2*12;
-   outdata->allbuf=new(std::nothrow) char[len+512];
+   outdata->allbuf=new(std::nothrow) char[webheaderreserve+len+360];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-        char *start=outdata->allbuf+152;
+        char *start=outdata->allbuf+webheaderreserve;
    auto halarm=gconvert(settings->data()->ahighget(),2);
    auto lowalarm=gconvert(settings->data()->alowget(),2);
    int alllen=snprintf(start,len,format, settings->getunitlabel().data(),halarm,lowalarm);
@@ -826,11 +867,11 @@ static bool givedripstatus(std::string_view origin,recdata *outdata) {
 static bool givestatusv3right(recdata *outdata) {
    #include "status3.h"
    constexpr const int len=sizeof(statusv3)+20;
-   outdata->allbuf=new(std::nothrow) char[len+512];
+   outdata->allbuf=new(std::nothrow) char[webheaderreserve+len+360];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-        char *start=outdata->allbuf+152;
+        char *start=outdata->allbuf+webheaderreserve;
    int alllen=snprintf(start,len,statusv3, time(nullptr));
    mkjsonheader(start,start+alllen,false,outdata,"*"); 
    return true;
@@ -869,11 +910,11 @@ static bool givenightstatus(std::string_view origin,recdata *outdata) {
         struct tm tmbuf;
         gmtime_r(&tim, &tmbuf);
    constexpr const int len=sizeof(statusformat)+50;
-   outdata->allbuf=new(std::nothrow) char[len+512];
+   outdata->allbuf=new(std::nothrow) char[webheaderreserve+len+360];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-        char *start=outdata->allbuf+152;
+        char *start=outdata->allbuf+webheaderreserve;
    auto thigh=gconvert(settings->targethigh(),2);
    auto tlow=gconvert(settings->targetlow(),2);
    auto halarm=gconvert(settings->data()->ahighget(),2);
@@ -922,11 +963,11 @@ static int oneTdatestringGMT(time_t tim,char *buf) {
 bool givenolist(recdata *outdata) {
    LOGARWEB("givenothing");
    const std::string_view nothing="[]";
-   outdata->allbuf=new(std::nothrow) char[nothing.size()+512];
+   outdata->allbuf=new(std::nothrow) char[webheaderreserve+nothing.size()+360];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-   char *start=outdata->allbuf+152;
+   char *start=outdata->allbuf+webheaderreserve;
    memcpy(start,nothing.data(),nothing.size());
    mkjsonheader(start,start+nothing.size(),false,outdata,"*");
    return true;
@@ -934,11 +975,11 @@ bool givenolist(recdata *outdata) {
 bool givenothing(recdata *outdata) {
    LOGARWEB("givenothing");
    const std::string_view nothing="{}\n";
-   outdata->allbuf=new(std::nothrow) char[nothing.size()+512];
+   outdata->allbuf=new(std::nothrow) char[webheaderreserve+nothing.size()+360];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-   char *start=outdata->allbuf+152;
+   char *start=outdata->allbuf+webheaderreserve;
    memcpy(start,nothing.data(),nothing.size());
    mkjsonheader(start,start+nothing.size(),false,outdata,"*");
    return true;
@@ -976,7 +1017,7 @@ static bool givecurrent(std::string_view origin,recdata *outdata) {
          return givenothing(outdata);
       }
    const ScanData *value=iter;;
-   outdata->allbuf=new(std::nothrow) char[300+1024];
+   outdata->allbuf=new(std::nothrow) char[webheaderreserve+1172];
    if(!outdata->allbuf)
       return outofmemory(outdata);
    auto cali=make_calibrator<ScanData>(sens); 
@@ -986,7 +1027,7 @@ static bool givecurrent(std::string_view origin,recdata *outdata) {
          tmp->g=(int32_t) round(calibrated);
          value=tmp;
          }
-   char *start=outdata->allbuf+152,*outiter=start;
+   char *start=outdata->allbuf+webheaderreserve,*outiter=start;
    outiter=textitem(outiter,value)-2;
 /*
    long long len=outiter-start;
@@ -1015,14 +1056,13 @@ int formattime(char *buf, time_t tim) {
 bool givesgvtxt(const char *input,int inlen,std::string_view origin,recdata *outdata,char sep=9);
 bool givesgvtxt(int nr,int interval,uint32_t lowerend,uint32_t higherend,std::string_view origin,recdata *outdata,char sep=9) {
 
-   constexpr const int headerlen=200;
-    const int bufsize= headerlen+1+100*nr+100;
+    const int bufsize= webheaderreserve+1+100*nr+100;
       outdata->allbuf=new(std::nothrow) char[bufsize];
    if(outdata->allbuf==nullptr) {
       LOGGERWEB("givesgvtxt new failed %d\n",bufsize);
       return outofmemory(outdata);
       }
-    char *start=outdata->allbuf+250,*outiter=start;
+    char *start=outdata->allbuf+webheaderreserve,*outiter=start;
    if(!getitems(outiter,nr,lowerend,higherend,true,interval,[sep](char *outiter,int datit, const ScanData *iter,const sensorname_t * sensorname ,const time_t starttime) {
       return textitem(outiter,iter,sep);
    })) {
@@ -1117,11 +1157,11 @@ static bool getv3modified(std::string_view origin,recdata *outdata) {
       lastnum=1546297200;
 
    #include "lastModified.h"
-      outdata->allbuf=new(std::nothrow) char[512+sizeof(lastModified)+3*10+1];
+      outdata->allbuf=new(std::nothrow) char[webheaderreserve+sizeof(lastModified)+393];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-       char *start=outdata->allbuf+150;
+       char *start=outdata->allbuf+webheaderreserve;
 //   uint32_t lastprofile=1546297200;
 //   auto alllen=sprintf(start,lastModified,now,lastentries,lastprofile,lastnum);
    uint32_t lastdevicestatus=1546297200;
@@ -1230,12 +1270,12 @@ bool giveproperties(const char *input,int inputlen,std::string_view origin,recda
    LOGGERWEB("giveproperties(%s,%d,recdata *outdata) \n",input,inputlen);
 //   const char *end=input+inputlen;
     if(*input++=='/') {
-      outdata->allbuf=new(std::nothrow) char[512*inputlen];
+      outdata->allbuf=new(std::nothrow) char[webheaderreserve+512*inputlen];
       if(!outdata->allbuf)
          return outofmemory(outdata);
 
 
-      char *start=outdata->allbuf+152,*outiter=start;
+      char *start=outdata->allbuf+webheaderreserve,*outiter=start;
       const char *endinput=input+inputlen;
       *outiter++='{';
       while (true) {
@@ -1276,10 +1316,10 @@ bool giveproperties(const char *input,int inputlen,std::string_view origin,recda
          }
       }
    else {
-      outdata->allbuf=new(std::nothrow) char[512*6];
+      outdata->allbuf=new(std::nothrow) char[webheaderreserve+512*6];
       if(!outdata->allbuf)
              return outofmemory(outdata);
-      char *start=outdata->allbuf+152,*outiter=start;
+      char *start=outdata->allbuf+webheaderreserve,*outiter=start;
       *outiter++='{';
       outiter = givebgnow(outiter);
       outiter = getdeltastr(outiter);
@@ -1511,12 +1551,14 @@ static bool setitervar(const char *&iter,std::string_view cond,bool &var) {
       }
    return false;
    }
-extern   std::span<char> gethistory(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool);
-extern   std::span<char> getstream(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool);
-extern   std::span<char> getscans(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool);
-extern   std::span<char> getamounts(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool);
-extern std::span<char> getmeals(int startpos, int len, uint32_t starttime, uint32_t endtime,bool header,int,bool,int,bool);
-extern std::span<char> libreviewweb(int startpos, int startlen, uint32_t starttime, uint32_t endtime,bool header,int unit,bool,int maxcount,bool) ;
+extern   std::span<char> gethistory(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool,bool);
+extern   std::span<char> getstream(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool,bool);
+extern   std::span<char> getscans(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool,bool);
+extern   std::span<char> getamounts(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool,bool);
+extern std::span<char> getmeals(int startpos, int len, uint32_t starttime, uint32_t endtime,bool header,int,bool,int,bool,bool);
+extern std::span<char> getactivities(int startpos,int len,uint32_t starttime,uint32_t endtime,bool header,int,bool,int,bool,bool);
+extern std::span<char> getextendedactivities(int startpos,int len,uint32_t starttime,uint32_t endtime,bool header,int,bool,int,bool,bool);
+extern std::span<char> libreviewweb(int startpos, int startlen, uint32_t starttime, uint32_t endtime,bool header,int unit,bool,int maxcount,bool,bool) ;
 
 
 static time_t readtime(const char *&input) {
@@ -1561,6 +1603,8 @@ Getopts::Getopts(const char *posptr,int size,int defaultduration): unit(settings
       for (const char *iter = posptr + 1; iter < ends; iter = std::find(iter, ends, '&') + 1) {
          std::string_view header = "header"sv;
          if (setitervar(iter, header, headermode))
+            continue;
+         if (setitervar(iter, "extended"sv, extendedmode))
             continue;
          if (setitervar(iter, "json"sv, jsonmode))
             continue;
@@ -1800,7 +1844,130 @@ Getopts::Getopts(const char *posptr,int size,int defaultduration): unit(settings
       }
    };
 
-typedef      std::span<char> (*getdata_t)(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool calibrated);
+static bool readlivecursor(std::string_view value,livecursor &cursor) {
+   while(!value.empty()&&(value.front()==' '||value.front()=='\t'))
+      value.remove_prefix(1);
+   while(!value.empty()&&(value.back()==' '||value.back()=='\t'||value.back()=='\r'))
+      value.remove_suffix(1);
+   const size_t colon=value.find(':');
+   if(colon==std::string_view::npos||!colon||colon==(value.size()-1))
+      return false;
+   int sensorid=-1;
+   int recordid;
+   const char * const begin=value.data();
+   const char * const split=begin+colon;
+   const char * const end=begin+value.size();
+   const auto sensorres=std::from_chars(begin,split,sensorid);
+   const auto recordres=std::from_chars(split+1,end,recordid);
+   if(sensorres.ec!=std::errc()||sensorres.ptr!=split||recordres.ec!=std::errc()||recordres.ptr!=end||sensorid<0||recordid<0)
+      return false;
+   cursor={sensorid,recordid};
+   return true;
+   }
+
+struct livereading {
+   ScanData data;
+   int sensorid;
+   bool calibrated;
+   };
+
+static bool getlatestlivereading(bool calibrate,bool calibratePast,livereading &out) {
+   if(!sensors)
+      return false;
+   const SensorGlucoseData *latestsensor=nullptr;
+   const ScanData *latestdata=nullptr;
+   int latestsensorid=-1;
+   int sensorid=sensors->last();
+   // The newest and previous stream sensors can overlap when a sensor is replaced.
+   for(int found=0;found<2&&sensorid>=0;++found) {
+      const SensorGlucoseData *sens=getStreamSensor(sensorid);
+      if(!sens)
+         break;
+      const int thissensorid=sensorid--;
+      if(const ScanData *item=sens->lastValidStream();item&&(!latestdata||item->t>latestdata->t)) {
+         latestdata=item;
+         latestsensor=sens;
+         latestsensorid=thissensorid;
+         }
+      }
+   if(!latestdata)
+      return false;
+   out={*latestdata,latestsensorid,false};
+   if(calibrate) {
+      auto cali=make_calibrator<ScanData>(latestsensor);
+      const double calibrated=cali.calibrateONE(out.data,calibratePast);
+      if(!std::isnan(calibrated)) {
+         out.data.g=std::round(calibrated);
+         out.calibrated=true;
+         }
+      }
+   return true;
+   }
+
+static bool samelivecursor(const livecursor &one,const livecursor &two) {
+   return one.sensorid==two.sensorid&&one.recordid==two.recordid;
+   }
+
+extern int getdeltaindex(float rate);
+static int makeliveevent(char *output,int outputsize,const livereading &reading) {
+   const ScanData &data=reading.data;
+   // recordId is only unique within one sensor, so the SSE cursor combines both IDs.
+   const livecursor cursor{reading.sensorid,data.id};
+   const int trend=getdeltaindex(data.ch);
+   const std::string_view direction=getdeltaname(data.ch);
+   if(std::isnan(data.ch))
+      return snprintf(output,outputsize,
+         "id: %d:%d\n"
+         "event: glucose\n"
+         "data: {\"schemaVersion\":1,\"timestamp\":%u,\"sensorId\":%d,\"recordId\":%d,"
+         "\"glucoseMgDl\":%d,\"glucoseMmolL\":%.3f,\"rateMgDlPerMinute\":null,"
+         "\"trend\":%d,\"direction\":\"%.*s\",\"calibrated\":%s}\n\n",
+         cursor.sensorid,cursor.recordid,data.t,cursor.sensorid,cursor.recordid,
+         data.g,data.getmmolL(),trend,static_cast<int>(direction.size()),direction.data(),
+         reading.calibrated?"true":"false");
+   return snprintf(output,outputsize,
+      "id: %d:%d\n"
+      "event: glucose\n"
+      "data: {\"schemaVersion\":1,\"timestamp\":%u,\"sensorId\":%d,\"recordId\":%d,"
+      "\"glucoseMgDl\":%d,\"glucoseMmolL\":%.3f,\"rateMgDlPerMinute\":%.3f,"
+      "\"trend\":%d,\"direction\":\"%.*s\",\"calibrated\":%s}\n\n",
+      cursor.sensorid,cursor.recordid,data.t,cursor.sensorid,cursor.recordid,
+      data.g,data.getmmolL(),data.ch,trend,static_cast<int>(direction.size()),direction.data(),
+      reading.calibrated?"true":"false");
+   }
+
+bool streamlive(void *context,livewritefunc write,livestopfunc stopped,const livestreamoptions &options) {
+   if(!write||!stopped)
+      return false;
+   livecursor last=options.lastevent;
+   constexpr auto heartbeatinterval=std::chrono::seconds(20);
+   auto nextheartbeat=std::chrono::steady_clock::now()+heartbeatinterval;
+   while(!stopped(context)) {
+      livereading reading;
+      if(getlatestlivereading(options.calibrated,options.calibratePast,reading)) {
+         const livecursor current{reading.sensorid,reading.data.id};
+         if(!samelivecursor(last,current)) {
+            char event[768];
+            const int eventlen=makeliveevent(event,sizeof(event),reading);
+            if(eventlen<=0||eventlen>=static_cast<int>(sizeof(event))||!write(context,event,eventlen))
+               return false;
+            last=current;
+            nextheartbeat=std::chrono::steady_clock::now()+heartbeatinterval;
+            }
+         }
+      const auto now=std::chrono::steady_clock::now();
+      if(now>=nextheartbeat) {
+         static constexpr const char heartbeat[]=": keep-alive\n\n";
+         if(!write(context,heartbeat,sizeof(heartbeat)-1))
+            return false;
+         nextheartbeat=now+heartbeatinterval;
+         }
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      }
+   return true;
+   }
+
+typedef      std::span<char> (*getdata_t)(int startpos, int len, uint32_t starttime, uint32_t endtime,bool,int,bool,int,bool calibrated,bool);
 
 
 template <typename T,int N,typename T1> 
@@ -1819,7 +1986,7 @@ typedef std::span<char> (*MakeImageT)(int startpos,Getopts &opts);
 
 static bool makeimage(Getopts &opts,std::string_view origin,recdata *outdata,MakeImageT func) {
     constexpr const std::string_view imagetype{"image/png"sv};
-    constexpr const int startpos=152;
+    constexpr const int startpos=webheaderreserve;
     std::span<char> res=func(startpos,opts);
     char *imagestart=res.data();
     if(!imagestart)
@@ -2149,11 +2316,143 @@ sizear(afterstatistics)+
     <title>Juggluco Report</title>)"sv,{buf,wrotelen},darkmode);
     }
 
+static bool givelive(Getopts &opts,bool headonly,std::string_view origin,recdata *outdata) {
+   static constexpr const char response[]="HTTP/1.1 200 OK";
+   static constexpr const char allowheader[]="\r\nAccess-Control-Allow-Origin: ";
+   static constexpr const char headers[]=
+      "\r\nContent-Type: text/event-stream; charset=utf-8"
+      "\r\nCache-Control: no-cache, no-transform"
+      "\r\nX-Accel-Buffering: no"
+      "\r\nConnection: close"
+      "\r\n\r\n";
+   static constexpr const char retry[]="retry: 5000\n\n";
+   const bool allow=alloworigin(origin);
+   const int alloclen=sizeof(response)+sizeof(headers)+sizeof(retry)+
+      (allow?(sizeof(allowheader)+origin.size()):0);
+   char * const start=outdata->allbuf=new(std::nothrow) char[alloclen];
+   if(!start)
+      return outofmemory(outdata);
+   char *outiter=start;
+   addar(outiter,response);
+   if(allow) {
+      addar(outiter,allowheader);
+      addstrview(outiter,origin);
+      }
+   addar(outiter,headers);
+   if(!headonly)
+      addar(outiter,retry);
+   outdata->start=start;
+   outdata->len=outiter-start;
+   outdata->livestream=!headonly;
+   outdata->streamoptions.calibrated=opts.calibratedmode||opts.calibratedhistorymode||opts.calibratedscansmode;
+   outdata->streamoptions.calibratePast=opts.pastvaluesmode;
+   return true;
+   }
 
-extern bool givestatistics(Getopts &opts,std::string_view origin,recdata *outdata);
+static bool giveliveexample(Getopts &opts,std::string_view origin,recdata *outdata) {
+   static constexpr const std::string_view header=R"(
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Juggluco live SSE example</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,sans-serif}
+body{margin:0}
+main{max-width:36rem;margin:8vh auto;padding:1.5rem}
+#glucose{font-size:clamp(3rem,15vw,7rem);font-weight:700;line-height:1}
+#status{margin:.5rem 0 2rem}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:.5rem 1rem}
+dt{font-weight:600}
+dd{margin:0;overflow-wrap:anywhere}
+code{font-size:.8rem}
+</style>)";
+   static constexpr const std::string_view body=R"(
+<main>
+  <h1>Live glucose</h1>
+  <div id="glucose">—</div>
+  <div id="status">Connecting…</div>
+  <dl>
+    <dt>Direction</dt><dd id="direction">—</dd>
+    <dt>Time</dt><dd id="time">—</dd>
+    <dt>Event ID</dt><dd id="eventid">—</dd>
+    <dt>Endpoint</dt><dd><code id="endpoint"></code></dd>
+  </dl>
+</main>
+<script>
+const endpoint = new URL(location.href);
+endpoint.pathname = endpoint.pathname.replace(/live\.html$/, "live");
+const showMmol = endpoint.searchParams.has("mmol/L");
+document.getElementById("endpoint").textContent = endpoint.href;
+const status = document.getElementById("status");
+const source = new EventSource(endpoint);
+source.onopen = () => status.textContent = "Connected";
+source.onerror = () => status.textContent = "Reconnecting…";
+source.addEventListener("glucose", event => {
+  const reading = JSON.parse(event.data);
+  document.getElementById("glucose").textContent = showMmol
+    ? `${reading.glucoseMmolL.toFixed(1)} mmol/L`
+    : `${reading.glucoseMgDl} mg/dL`;
+  document.getElementById("direction").textContent = reading.direction || "—";
+  document.getElementById("time").textContent =
+    new Date(reading.timestamp * 1000).toLocaleString();
+  document.getElementById("eventid").textContent = event.lastEventId;
+});
+addEventListener("beforeunload", () => source.close());
+</script>)";
+   return mkhtml(outdata,origin,header,body,opts.darkmode);
+   }
+
+
+//static   constexpr const char status[]="HTTP/1.1 413 Content Too Large\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 30\r\n\r\n<h1>Server out of memory</h1>\n";
+static void redirhttp(std::string_view location, recdata *outdata) {
+  constexpr const char startredir[]{"HTTP/1.1 307 Temporary Redirect\r\nLocation: "};
+  constexpr const int  startlen=sizeof(startredir)-1;
+   constexpr const char endredir[]="\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\n\r\n";
+  constexpr const int  endlen=sizeof(endredir);
+  const int buflen=location.size()+startlen+endlen;
+  char *ptr=new char[buflen];
+  outdata->start=outdata->allbuf=ptr;
+
+   memcpy(ptr,startredir,startlen);
+   ptr+=startlen;
+   memcpy(ptr,location.data(),location.size());
+   ptr+=location.size();
+   memcpy(ptr,endredir,endlen);
+   outdata->len=buflen-1;
+   }
+static bool giveredir(const char *posptr,int size,std::string_view origin,recdata *outdata) {
+   if(*posptr=='/') {
+        ++posptr;
+        --size;
+        }
+   if(*posptr++!= '?') {
+        return false;
+        }
+    auto ends=posptr+size;
+    auto *space=std::find(posptr,ends,' ');
+    if(space==ends) 
+        return false;
+    std::string_view location(posptr,space-posptr);
+    redirhttp(location,outdata);
+    return true;
+  }
+
 extern bool isLargeCurve(Getopts &opts);
-static bool jugglucos(const char * const input,int size, std::string_view hostname,uint16_t lang, bool secure,bool wantsjson,std::string_view origin,recdata *outdata) {
+extern bool givestatistics(Getopts &opts,std::string_view origin,recdata *outdata);
+static bool jugglucos(const char * const input,int size, std::string_view hostname,uint16_t lang, bool secure,bool headonly,bool wantsjson,std::string_view origin,recdata *outdata) {
    const char *posptr=input;
+    {constexpr const char liveexample[]="live.html";
+    if(!strarcmp(liveexample,input)) {
+        constexpr const int namesize=sizeof(liveexample)-1;
+        Getopts opts(input+namesize,size-namesize);
+        return giveliveexample(opts,origin,outdata);
+        }
+      }
+    {constexpr const char live[]="live";
+    if(!strarcmp(live,input)) {
+        constexpr const int namesize=sizeof(live)-1;
+        Getopts opts(input+namesize,size-namesize);
+        return givelive(opts,headonly,origin,outdata);
+        }
+      }
     {constexpr const char summary[]="summarygraph";
     if(!strarcmp(summary,input)) {
         constexpr const int sumsize=(sizeof(summary)-1);
@@ -2231,9 +2530,16 @@ static bool jugglucos(const char * const input,int size, std::string_view hostna
         }
     }
 
-   constexpr const std::string_view types[]={"history"sv,"stream"sv,"scans"sv,"amounts"sv,"meals"sv,"libreview"sv};
-    constexpr const getdata_t procs[]={gethistory,getstream,getscans,getamounts,getmeals,libreviewweb};
-   constexpr const int perhour[]={12*62,60*81,2*81,5*85,200,700};
+    {constexpr const char redirexample[]="redir.html";
+    if(!strarcmp(redirexample,input)) {
+        constexpr const int namesize=sizeof(redirexample)-1;
+        return giveredir(input+namesize,size-namesize,origin,outdata);
+        }
+      }
+
+   constexpr const std::string_view types[]={"history"sv,"stream"sv,"scans"sv,"amounts"sv,"meals"sv,"libreview"sv,"activities"sv};
+    constexpr const getdata_t procs[]={gethistory,getstream,getscans,getamounts,getmeals,libreviewweb,getactivities};
+   constexpr const int perhour[]={12*62,60*81,2*81,5*85,200,700,0}; // Activities grows its own buffer.
    for(int i=0;i<std::size(types);i++) {
       auto type=types[i];
       int typelen=type.size();
@@ -2247,13 +2553,14 @@ static bool jugglucos(const char * const input,int size, std::string_view hostna
             ++posptr;
             ++typelen;
             }
-         Getopts opts(posptr,size-typelen);
+         Getopts opts(posptr,size-typelen,(i>=2&&i<=4)?4*daysecs:(i==6?(7*daysecs):5*60*60));
          const int startlen=((opts.end-opts.start)/(60*60))*perhour[i];
-         constexpr const int startpos=152;
+         constexpr const int startpos=webheaderreserve;
          bool calibrated=opts.calibratedmode||opts.calibratedhistorymode||opts.calibratedscansmode;
 
 
-         std::span<char> res=procs[i](startpos,startlen,opts.start,opts.end,opts.headermode,opts.unit,!opts.exclusivemode,opts.datnr,calibrated);
+         const auto getdata=type=="activities"sv&&opts.extendedmode?getextendedactivities:procs[i];
+         std::span<char> res=getdata(startpos,startlen,opts.start,opts.end,opts.headermode,opts.unit,!opts.exclusivemode,opts.datnr,calibrated,opts.pastvaluesmode);
           if(!res.data()) {
                 return outofmemory(outdata);
                 }
@@ -2290,6 +2597,203 @@ static bool showviewer(std::string_view toget,recdata *outdata) {
           }
      return false;
      }
+
+static bool additionnotfound(bool headonly,recdata *outdata) {
+   static constexpr char header[]=
+      "HTTP/1.1 404 Not Found\r\n"
+      "Content-Type: text/plain; charset=utf-8\r\n"
+      "Content-Length: 10\r\n\r\n";
+   static constexpr char response[]=
+      "HTTP/1.1 404 Not Found\r\n"
+      "Content-Type: text/plain; charset=utf-8\r\n"
+      "Content-Length: 10\r\n\r\n"
+      "Not Found\n";
+   outdata->allbuf=nullptr;
+   outdata->start=headonly?header:response;
+   outdata->len=headonly?(sizeof(header)-1):(sizeof(response)-1);
+   return true;
+   }
+
+static int hexvalue(unsigned char ch) {
+   if(ch>='0'&&ch<='9')
+      return ch-'0';
+   if(ch>='a'&&ch<='f')
+      return ch-'a'+10;
+   if(ch>='A'&&ch<='F')
+      return ch-'A'+10;
+   return -1;
+   }
+
+static bool decodeurlpath(std::string_view encoded,std::string &decoded) {
+   decoded.clear();
+   decoded.reserve(encoded.size());
+   for(size_t i=0;i<encoded.size();++i) {
+      unsigned char ch=encoded[i];
+      if(ch=='%') {
+         if((i+2)>=encoded.size())
+            return false;
+         const int high=hexvalue(encoded[i+1]);
+         const int low=hexvalue(encoded[i+2]);
+         if(high<0||low<0)
+            return false;
+         ch=(high<<4)|low;
+         i+=2;
+         }
+      if(!ch||ch=='\\')
+         return false;
+      decoded.push_back(static_cast<char>(ch));
+      }
+   return true;
+   }
+
+static bool safeadditionpath(std::string_view path) {
+   if(path.empty()||path.front()=='/')
+      return false;
+   size_t start=0;
+   while(start<path.size()) {
+      const size_t slash=path.find('/',start);
+      const size_t end=slash==std::string_view::npos?path.size():slash;
+      const auto component=path.substr(start,end-start);
+      if(component.empty()||component=="."sv||component==".."sv)
+         return false;
+      if(slash==std::string_view::npos)
+         return true;
+      start=slash+1;
+      }
+   return false;
+   }
+
+static std::string_view additioncontenttype(std::string_view path) {
+   const size_t dot=path.rfind('.');
+   if(dot==std::string_view::npos)
+      return "application/octet-stream"sv;
+   const auto ext=path.substr(dot+1);
+   if(ext=="html"sv||ext=="htm"sv)
+      return "text/html; charset=utf-8"sv;
+   if(ext=="css"sv)
+      return "text/css; charset=utf-8"sv;
+   if(ext=="js"sv||ext=="mjs"sv)
+      return "text/javascript; charset=utf-8"sv;
+   if(ext=="json"sv)
+      return "application/json; charset=utf-8"sv;
+   if(ext=="txt"sv||ext=="csv"sv)
+      return "text/plain; charset=utf-8"sv;
+   if(ext=="svg"sv)
+      return "image/svg+xml"sv;
+   if(ext=="png"sv)
+      return "image/png"sv;
+   if(ext=="jpg"sv||ext=="jpeg"sv)
+      return "image/jpeg"sv;
+   if(ext=="gif"sv)
+      return "image/gif"sv;
+   if(ext=="webp"sv)
+      return "image/webp"sv;
+   if(ext=="ico"sv)
+      return "image/x-icon"sv;
+   if(ext=="wasm"sv)
+      return "application/wasm"sv;
+   return "application/octet-stream"sv;
+   }
+
+static bool pathinside(const char *path,const char *directory) {
+   const size_t dirlen=strlen(directory);
+   if(strncmp(path,directory,dirlen))
+      return false;
+   if(dirlen==1&&directory[0]=='/')
+      return path[0]=='/'&&path[1]!='\0';
+   return path[dirlen]=='/';
+   }
+
+/*
+ * Serve user supplied web files from globalbasedir/additions.
+ * The request target still contains " HTTP/1.x" here, so only the path part
+ * before a query string or whitespace is considered.
+ *
+ * Returns false when this is not an additions URL.  Once the URL starts with
+ * additions/, it returns true and produces either the file or a 404 response.
+ */
+static bool giveaddition(std::string_view toget,bool headonly,std::string_view origin,recdata *outdata) {
+   static constexpr std::string_view prefix="additions/"sv;
+   const size_t pathend=toget.find_first_of(" ?#\r\n");
+   const std::string_view requestpath=toget.substr(0,pathend);
+   if(requestpath.size()<prefix.size()||requestpath.substr(0,prefix.size())!=prefix)
+      return false;
+
+   std::string relative;
+   if(!decodeurlpath(requestpath.substr(prefix.size()),relative)||!safeadditionpath(relative))
+      return additionnotfound(headonly,outdata);
+
+   std::string additionsdir(globalbasedir);
+   if(!additionsdir.empty()&&additionsdir.back()!='/')
+      additionsdir.push_back('/');
+   additionsdir.append("additions");
+
+   const std::string basedir(globalbasedir);
+   char realbase[PATH_MAX];
+   if(!realpath(basedir.c_str(),realbase))
+      return additionnotfound(headonly,outdata);
+
+   char realdir[PATH_MAX];
+   if(!realpath(additionsdir.c_str(),realdir))
+      return additionnotfound(headonly,outdata);
+   if(!pathinside(realdir,realbase))
+      return additionnotfound(headonly,outdata);
+
+   std::string filename(additionsdir);
+   filename.push_back('/');
+   filename.append(relative);
+   char realfile[PATH_MAX];
+   if(!realpath(filename.c_str(),realfile))
+      return additionnotfound(headonly,outdata);
+
+   if(!pathinside(realfile,realdir))
+      return additionnotfound(headonly,outdata);
+
+   const int fd=open(realfile,O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
+   if(fd<0)
+      return additionnotfound(headonly,outdata);
+
+   struct stat st;
+   if(fstat(fd,&st)||!S_ISREG(st.st_mode)||st.st_size<0||st.st_size>(INT_MAX-8192)) {
+      close(fd);
+      return additionnotfound(headonly,outdata);
+      }
+
+   const size_t filesize=static_cast<size_t>(st.st_size);
+   char *buffer=outdata->allbuf=new(std::nothrow) char[webheaderreserve+filesize+1];
+   if(!buffer) {
+      close(fd);
+      return outofmemory(outdata);
+      }
+
+   char *body=buffer+webheaderreserve;
+   if(!headonly) {
+      size_t done=0;
+      while(done<filesize) {
+         const ssize_t nr=read(fd,body+done,filesize-done);
+         if(nr<0) {
+            if(errno==EINTR)
+               continue;
+            close(fd);
+            delete[] buffer;
+            outdata->allbuf=nullptr;
+            return giveservererror(outdata);
+            }
+         if(!nr) {
+            close(fd);
+            delete[] buffer;
+            outdata->allbuf=nullptr;
+            return giveservererror(outdata);
+            }
+         done+=nr;
+         }
+      }
+   close(fd);
+
+   mktypeheader(body,body+filesize,headonly,outdata,additioncontenttype(relative),origin);
+   return true;
+   }
+
 bool watchcommands(char *rbuf,int len,recdata *outdata,bool secure) {
    LOGGERWEB("watchcommands len=%d %.*s",len,len,rbuf);
    const char *start=rbuf;
@@ -2307,10 +2811,16 @@ bool watchcommands(char *rbuf,int len,recdata *outdata,bool secure) {
    const int reheadlen=sizeof(rehead)-1;
    const char api_secret[]= "api_secret: ";
    const int   api_len=sizeof(api_secret)-1;
+   constexpr const char lasteventidname[]="Last-Event-ID:";
+   constexpr const int lasteventidnamelen=sizeof(lasteventidname)-1;
    std::string_view hostname,origin,referer;
    const auth_t *authori=nullptr;
    uint16_t lang=0;
    while((nl= std::find(start,ends,'\n'))!=ends) {
+      if((nl-start)>=lasteventidnamelen&&!strncasecmp(start,lasteventidname,lasteventidnamelen)) {
+         const char *value=start+lasteventidnamelen;
+         readlivecursor({value,static_cast<size_t>(nl-value)},outdata->streamoptions.lastevent);
+         }
       if(!memcmp(start,reget,regetlen)) {
          const char *reststart=start+regetlen;
          toget={reststart,(std::string_view::size_type)(nl-reststart)};
@@ -2359,8 +2869,13 @@ extern uint16_t choose_language( std::string_view accept_language, const std::un
                   constexpr const int originnamelen= sizeof(originnamestr)-1;
                   if(!memcmp(start,originnamestr,originnamelen)) {
                      const char *name=start+originnamelen;
-                     origin={name,static_cast<size_t>(nl-name-(nl[-1]==0x0D?1:0))};
-                     LOGGER("Origin=%.*s\n",origin.size(),origin.data());
+                     const size_t originlen=static_cast<size_t>(nl-name-(nl[-1]==0x0D?1:0));
+                     if(originlen<=maxoriginlen) {
+                        origin={name,originlen};
+                        LOGGER("Origin=%.*s\n",(int)origin.size(),origin.data());
+                        }
+                     else
+                        LOGGERWEB("Origin too long: %zu\n",originlen);
                      }
                   else
                       {
@@ -2408,7 +2923,11 @@ extern uint16_t choose_language( std::string_view accept_language, const std::un
       return false;
       }
    size_t seclen=settings->data()->apisecretlength;
-   if(seclen) {
+   bool encoded_secret_path=false;
+#if defined(__ANDROID__) && !defined(WEAROS)
+   encoded_secret_path=jgchat::consume_encoded_secret(toget,{settings->data()->apisecret,seclen});
+#endif
+   if(seclen&&!encoded_secret_path) {
 
             static constexpr const char token[]="token=";
             static constexpr const int tokenlen=sizeof(token)-1;
@@ -2485,6 +3004,8 @@ extern uint16_t choose_language( std::string_view accept_language, const std::un
       return true;
       }
    LOGGERWEB("toget=%.*s\n",(int)toget.size(),toget.data()); //to set getargs in the beginning and use everywhere
+   if(giveaddition(toget,behead,origin,outdata))
+      return true;
 std::string_view sgv="sgv.json";
    if(!memcmp(sgv.data(),toget.data(),sgv.size())) {
       return sgvinterpret(toget.data()+sgv.size(),toget.size()-sgv.size(),behead,false,origin,outdata,false);
@@ -2508,7 +3029,7 @@ std::string_view sgv="sgv.json";
 
       }
 if(!memcmp(jugglucocommand.data(),posptr,jugglucocommand.size())) {
-   return jugglucos(posptr+jugglucocommand.size(),toget.size()-jugglucocommand.size(),hostname,lang,secure,json,origin,outdata);
+   return jugglucos(posptr+jugglucocommand.size(),toget.size()-jugglucocommand.size(),hostname,lang,secure,behead,json,origin,outdata);
    }
 
 constexpr const std::string_view pebble="pebble";
@@ -2580,6 +3101,12 @@ void mktypeheader(char *outstart,char *outiter,const bool headonly,recdata *outd
    char lenstr[maxlen];
    const int getlen=snprintf(lenstr,maxlen,"%d\r\n\r\n",uitlen);
    const int headerlen=headerstartlen+getlen;
+   if(headerlen>webheaderreserve) {
+      LOGGERWEB("HTTP response header too large: %d > %d\n",headerlen,webheaderreserve);
+      outdata->start=servererrorstr.data();
+      outdata->len=servererrorstr.size();
+      return;
+      }
    char * const startheader=outstart-headerlen;
    char *ptr=startheader;
    addar(ptr,httpok);
@@ -2643,11 +3170,11 @@ static bool       pebbleinterpret(const char *input,int inputlen,std::string_vie
       }
    int count=pret.datnr>0?pret.datnr:1;
    bool mmol=pret.mmol;
-      outdata->allbuf=new(std::nothrow) char[512+80*+count+200];
+      outdata->allbuf=new(std::nothrow) char[webheaderreserve+562+80*count];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-       char *start=outdata->allbuf+150,*outiter=start;
+       char *start=outdata->allbuf+webheaderreserve,*outiter=start;
    auto nu=time(nullptr);
    constexpr const char startpebble[]=R"({"status":[{"now":%lld}],"bgs":[)";
    constexpr const char endpebble[]=R"(],"cals":[]})";
@@ -2686,10 +3213,10 @@ bool givesgvtxt(const char *input,int inlen,std::string_view origin,recdata *out
    return givesgvtxt(pret.datnr,pret.interval,pret.lowerend,pret.higherend,origin,outdata,sep);
    }
 char *Sgvinterpret::makedata(recdata *outdata ) const {
-   char *output=outdata->allbuf= new(std::nothrow) char[512+datnr*360];
+   char *output=outdata->allbuf= new(std::nothrow) char[webheaderreserve+360+datnr*360];
    if(output==nullptr)
       return nullptr;
-   return output+152;
+   return output+webheaderreserve;
    }
 char *Sgvinterpret::dontbrief(char *outiter,const char *name,const ScanData *iter) const {
    outiter+=sprintf(outiter,R"("_id":"%s#%d","device":"Juggluco","dateString":")", name,iter->id);
@@ -2835,7 +3362,7 @@ static bool givetreatments(const char *args,int argslen, std::string_view origin
    bool carb=pret.carb;
    bool insulin=pret.insulin;
    int i=0;
-   if(settings->data()->saytreatments&&!pret.event) {
+   if(settings->data()->GiveAmounts&&!pret.event) {
       for(;i<count;) {
          auto [ind,num]=findnewestwith(numiters,basecount);
          if(!num) {
@@ -3446,12 +3973,12 @@ bool       getv3treatments(const char *input,int inputlen,std::string_view origi
       return false;
       }
 
-   char *buffer=outdata->allbuf= new(std::nothrow) char[512+50+20+args.datnr*300];
+   char *buffer=outdata->allbuf= new(std::nothrow) char[webheaderreserve+382+args.datnr*300];
    if(!buffer) {
       LOGARWEB("getv3treatments:");
       return outofmemory(outdata);
       }
-    char *outiter=buffer+200;
+    char *outiter=buffer+webheaderreserve;
     char *outstart=outiter;
    addar(outiter,R"({"status":200,"result":)");
    uint32_t lastmodified=0;
@@ -3545,11 +4072,11 @@ bool getv3entries(const char *cmdstart,const char *cmdend,std::string_view origi
       }
    int count=args.datnr;
    if(lowerend) args.lowerend=lowerend;
-   outdata->allbuf=new(std::nothrow) char[512+50+320*count+200];
+   outdata->allbuf=new(std::nothrow) char[webheaderreserve+562+320*count];
    if(!outdata->allbuf) {
       return outofmemory(outdata);
       }
-   char *start=outdata->allbuf+200,*outiter=start;
+   char *start=outdata->allbuf+webheaderreserve,*outiter=start;
    constexpr const char begin[]=R"({"status":200,"result":[)";
    addar(outiter,begin);
    uint32_t lastmodified;

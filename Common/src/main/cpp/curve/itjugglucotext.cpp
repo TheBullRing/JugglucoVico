@@ -100,12 +100,12 @@ static jugglucotext ittext {
 	.duration="Durata: %.1f giorni",
 	.timeactive="%.1f%% del tempo attivo",
 	.nrmeasurement="Numero di misure: %d",
-	.EstimatedA1C="A1C stimata: %.1f%% (%d mmol/mol)",
+	.EstimatedA1C="uGMI ≈ A1C stimata: %.1f%% (%d mmol/mol)",
 	.GMI="Glucose Management Indicator: %.1f%% (%d mmol/mol)",
 	.SD="SD: %.2f",
 	.glucose_variability="Variabilità glicemica: %.1f%%",
      .menustr0={
-		"UI di sistema",
+		"ChatGPT",
 		"Menu",
 		"Orologio",
 		"Sensore",
@@ -131,7 +131,7 @@ static jugglucotext ittext {
 		"Pronuncia",
 		"Flottante"
 		},
-	.menustr2= {"Ultima scansione","Scansioni","Flusso","Cronologia","Valori","Pasti","Modalità scura"}, 
+	.menustr2= {"UI di sistema","Scansioni","Flusso","Cronologia","Valori","Pasti","Modalità scura"}, 
 	.menustr3= {hourminstr,"Cerca","Data","Giorno prima","Giorno dopo","Settimana prima","Settimana dopo"}, 
 #endif //INJUGGLUCO
 #else
@@ -167,7 +167,7 @@ static jugglucotext ittext {
 
 .libre3scanerror={"FreeStyle Libre 3, errore di scansione", "Riprova"},
 .libre3wrongID={"Errore, account ID errato?",
-	R"(Deve essere lo stesso usato per attivare il sensore. Per recuperarlo da LibreView, vai in Menu sinistro→Impostazione→Scambio dati→LibreView→"Ottieni Account ID")"},
+	R"(Deve essere lo stesso usato per attivare il sensore. Per recuperarlo da LibreView, vai in Menu sinistro->Impostazione->Scambio dati->LibreView->"Ottieni Account ID")"},
 .libre3scansuccess= {"Sensore FreeStyle Libre 3", "I valori del glucosio saranno ora ricevuti da Juggluco"},
 .unknownNFC={"Errore: scansione NFC non riconosciuta", "Riprova"},
 .nolibre3={"Sensore FreeStyle Libre 3","Scarica la versione corretta da https://www.juggluco.nl/download.html"},

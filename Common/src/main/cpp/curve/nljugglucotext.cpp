@@ -70,8 +70,8 @@ static jugglucotext nltext {
 .noconnectionerror=": geen verbinding",
 .stsensorerror=": Sensorfout",
 .streplacesensor=": vervang sensor?",
-.endedformat="Sensor %s not working anymore. state=%d",
-.notreadyformat="Sensor %s not ready. state=%d",
+.endedformat="Sensor %s werkt niet meer. state=%d",
+.notreadyformat="Sensor %s niet gereed. state=%d",
 #ifndef WEAROS
 	.median="Mediaan",
 	.middle="Midden",
@@ -92,14 +92,14 @@ static jugglucotext nltext {
 	.duration="Duur: %.1f dagen",
 	.timeactive="%.1f%% van de tijd actief",
 	.nrmeasurement="Aantal metingen: %d",
-	.EstimatedA1C="Geschatte Hba1C: %.1f%% (%d mmol/mol)",
+	.EstimatedA1C="uGMI ≈ Geschatte Hba1C: %.1f%% (%d mmol/mol)",
 	.GMI="Glucose Management Indicator: %.1f%% (%d mmol/mol)",
 	.SD="SD: %.2f",
 	.glucose_variability="Glucose variabiliteit: %.1f%%",
 
 
      .menustr0={
-		"System UI",
+		"ChatGPT",
 		"Menus",
 		"Horloges",
 		"Sensor",
@@ -125,7 +125,7 @@ static jugglucotext nltext {
 		"Praat",
 		"Zweef"
 		},
-	.menustr2= {"Laatste scan","Scans","Stream","History","Hoeveelheden","Maaltijden","Dark mode"},
+	.menustr2= {"System UI","Scans","Stream","History","Hoeveelheden","Maaltijden","Dark mode"},
 	.menustr3= {hourminstr,"Zoeken","Datum","Dag terug","Dag later","Week terug","Week later"},
 #endif
 #else

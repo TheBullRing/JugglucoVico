@@ -32,9 +32,11 @@ import static tk.glucodata.util.getbutton;
 import static tk.glucodata.util.getlabel;
 
 import android.bluetooth.BluetoothDevice;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
+import android.widget.FrameLayout;
 import android.widget.Spinner;
 import android.widget.Toast;
 
@@ -114,11 +116,10 @@ static void config(MainActivity context, int meterIndex, View parent, BluetoothD
    float density=GlucoseCurve.metrics.density;
    bloodvar.setPadding((int)(density*10),0,(int)(4*density),0);
    var layout=new Layout(context,(x,w,h)->{
-         var width=GlucoseCurve.getwidth();
-         x.setX((width-w)/2);
-         x.setY(MainActivity.systembarTop);
          return new int[] {w,h};
-           },new View[]{namelabel},new View[]{bloodafter},new View[]{datebutton,timebutton},new View[]{helpbutton,bloodvar,spinner},new View[]{cancel,deletebutton,ok});
+           },new View[]{namelabel},new View[]{bloodafter},new View[]{helpbutton,datebutton,timebutton},new View[]{bloodvar,spinner},new View[]{cancel,deletebutton,ok});
+
+    layout.systembarMargins();
    timebutton.setOnClickListener(v-> {
      layout.setVisibility(INVISIBLE);
      context.getnumberview().gettimepicker(context,hour[0], min[0], (h,m) -> {
@@ -148,7 +149,6 @@ static void config(MainActivity context, int meterIndex, View parent, BluetoothD
       MainActivity.doonback();
       MainActivity.doonback();
       Log.i(LOG_ID,"save");
-      context.finepermission();
       Natives.GlucoseMeterSetLastTime(meterIndex,newtime[0]);
       if(device!=null)
               BluetoothGlucoseMeter.addDevice(meterIndex,device);
@@ -161,6 +161,14 @@ static void config(MainActivity context, int meterIndex, View parent, BluetoothD
                adapter.notifyDataSetChanged();
            BluetoothGlucoseMeter.restartDevices();
            });
-   context.addMyContentView(layout, new ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+
+    var  params =  new FrameLayout.LayoutParams(
+                    WRAP_CONTENT,
+                    WRAP_CONTENT,
+                    Gravity.CENTER_HORIZONTAL);
+
+    context.addMyContentView(layout, params);
+  // context.addMyContentView(layout, new ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+     context.finepermission();
    }
 }

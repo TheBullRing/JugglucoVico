@@ -222,6 +222,121 @@ extern void     processglucosevalue(int sendindex,int newstart) ;
 struct {
 float left,top,right,bottom;
 } menupos,hidepos;
+// Normal curve coordinates are logical-landscape in portrait mode.  A popup
+// menu, however, is drawn directly in physical portrait coordinates.
+static bool portraitmenupos=false;
+static float portraitmenufirsty=0.0f;
+static float portraitmenurowheight=0.0f;
+static float portraitmenucontentbottom=0.0f;
+
+static inline int menuitemat(float y) {
+    if(portraitmenupos) {
+        if(portraitmenurowheight<=0.0f || y<portraitmenufirsty || y>=portraitmenucontentbottom)
+            return -1;
+        return (int)((y-portraitmenufirsty)/portraitmenurowheight);
+        }
+    const float dist=(menupos.bottom-menupos.top)/nrmenu;
+    if(dist<=0.0f)
+        return -1;
+    return (int)((y-menupos.top)/dist);
+    }
+
+static inline void menutouchcoords(float &x,float &y) {
+    if(portraitmenupos) {
+        const float physicalx=y;
+        const float physicaly=(float)appcurve.surfaceheight-x;
+        x=physicalx;
+        y=physicaly;
+        }
+    }
+
+#ifndef WEAROS
+/*
+ * Statistics and the separate entered-number list are not part of the rotated
+ * curve.  Before portrait-curve support they were laid out directly in the
+ * physical screen coordinate system, and that is still the desired behavior.
+ * Temporarily restore that geometry while one of those screens is rendered.
+ */
+struct PhysicalPortraitLayout {
+    JCurve &curve;
+    bool oldportrait;
+    bool oldphysicalNanoVG;
+    int oldwidth,oldheight;
+    int oldstatusbarheight,oldstatusbarleft,oldstatusbarright;
+    float olddbottom,olddheight,olddwidth,oldtextheight,oldmenutextheight;
+
+    explicit PhysicalPortraitLayout(JCurve &c):
+        curve(c), oldportrait(c.portrait),
+        oldphysicalNanoVG(c.physicalNanoVG),
+        oldwidth(c.width), oldheight(c.height),
+        oldstatusbarheight(c.statusbarheight),
+        oldstatusbarleft(c.statusbarleft), oldstatusbarright(c.statusbarright),
+        olddbottom(c.dbottom), olddheight(c.dheight), olddwidth(c.dwidth),
+        oldtextheight(c.textheight), oldmenutextheight(c.menutextheight) {
+        /*
+         * Statistics and the entered-value list follow Android rotation in
+         * every orientation. This also suppresses the 180-degree graph turn
+         * when Android is in the landscape side opposite to the selected graph
+         * landscape.
+         */
+        c.physicalNanoVG=true;
+        if(!c.portrait)
+            return;
+        c.portrait=false;
+        c.width=c.surfacewidth;
+        c.height=c.surfaceheight;
+        c.statusbarheight=c.physicalbartop*4/5;
+        c.statusbarleft=c.physicalbarleft;
+        c.statusbarright=c.physicalbarright;
+        c.dbottom=c.physicalbarbottom;
+        c.dwidth=c.width-c.dleft-c.dright;
+        c.dheight=c.height-c.dtop-c.dbottom;
+        c.textheight=c.density*48.0f;
+        const int rows=std::max(1,(int)ceil(c.height/c.textheight));
+        c.textheight=(float)c.height/rows;
+        c.menutextheight=c.density*48.0f;
+        }
+
+    ~PhysicalPortraitLayout() {
+        curve.physicalNanoVG=oldphysicalNanoVG;
+        curve.portrait=oldportrait;
+        curve.width=oldwidth;
+        curve.height=oldheight;
+        curve.statusbarheight=oldstatusbarheight;
+        curve.statusbarleft=oldstatusbarleft;
+        curve.statusbarright=oldstatusbarright;
+        curve.dbottom=olddbottom;
+        curve.dheight=olddheight;
+        curve.dwidth=olddwidth;
+        curve.textheight=oldtextheight;
+        curve.menutextheight=oldmenutextheight;
+        }
+};
+
+static inline float numberListTextHeight(const JCurve &curve) {
+    if(!curve.portrait)
+        return curve.textheight;
+    float h=curve.density*48.0f;
+    const int rows=std::max(1,(int)ceil(curve.surfaceheight/h));
+    return (float)curve.surfaceheight/rows;
+}
+
+static inline float numberListDisplayHeight(const JCurve &curve) {
+    return curve.portrait
+        ? (float)curve.surfaceheight-curve.dtop-curve.physicalbarbottom
+        : curve.dheight;
+}
+
+static inline float numberListDisplayWidth(const JCurve &curve) {
+    return curve.portrait
+        ? (float)curve.surfacewidth-curve.dleft-curve.dright
+        : curve.dwidth;
+}
+
+static inline int numberListStatusTop(const JCurve &curve) {
+    return curve.portrait ? curve.physicalbartop*4/5 : curve.statusbarheight;
+}
+#endif
 #ifndef NOLOG
 void logmenupos() {
     LOGGER("left=%.1f top=%.1f right=%.1f bottom=%.1f\n",menupos.left,menupos.top,menupos.right,menupos.bottom);
@@ -273,14 +388,30 @@ int64_t JCurve::doehier(int menu,int item,bool right) {
     return -1LL;
     }
 #else
+
+extern int androidSDK; 
 int64_t JCurve::doehier(int menu,int item,bool right) {
     switch(menu) {
         case 0: 
             switch(item) {
-                case 0: 
-                    showui=!showui;
-                    settings->setui(showui);
-                    break;
+  //              case 0: 
+//                    showui=!showui;
+ //                   settings->setui(showui);
+
+   //                 break;
+                case 1:
+                     if(androidSDK<24) 
+                        return -1LL;
+                        
+                      break;
+#if 0
+              case 1:
+                extern void libre2tester() ;
+                        libre2tester();
+
+                return -1LL;
+              break;
+#endif
                 default:
                     nrmenu=0;
                     break;
@@ -308,8 +439,14 @@ int64_t JCurve::doehier(int menu,int item,bool right) {
                     break;
                 };break;
         case 2: {
-                    switch(item)     {
-                        case 0: {
+                switch(item)     {
+                        case 0: 
+                        showui=!showui;
+                        settings->setui(showui);
+                       return menu+3*0x10;
+
+                          break;
+                        /*
                             nrmenu=0;
                             int lastsensor=sensors->lastscanned();
                             if(lastsensor>=0) {
@@ -322,6 +459,7 @@ int64_t JCurve::doehier(int menu,int item,bool right) {
                                     }
                                 }
                             }; return -1ll; 
+                            */
                         case 1:
                                 if(right) {
                                     showscans=!showscans; setshowscans(showscans);
@@ -349,7 +487,9 @@ int64_t JCurve::doehier(int menu,int item,bool right) {
                         case 4: shownumbers=!shownumbers; setshownumbers(shownumbers);return -1ll;
                         case 5: showmeals=!showmeals; setshowmeals(showmeals);return -1ll;
 
-                        case 6: invertcolors=!invertcolors; setinvertcolors(invertcolors) ; return menu+invertcolors*0x10;
+                        case 6: invertcolors=!invertcolors; 
+                                setinvertcolors(invertcolors) ; 
+                               return menu+invertcolors*0x10;
                               break;//return -1ll;
                         };
                     break;
@@ -442,14 +582,14 @@ static void speakdate(time_t tim) {
 #endif
 
 static int64_t menutap(float x,float y) {
+    menutouchcoords(x,y);
     if(x<menupos.left||x>=menupos.right) {
         nrmenu=0;
         return -1LL;
         }
     float mid=(menupos.left+menupos.right)/2;
 
-    float dist=(menupos.bottom-menupos.top)/nrmenu;
-    int item=(y-menupos.top)/dist;
+    int item=menuitemat(y);
     if(item>=0&&item<nrmenu) {
 
         LOGGER("menuitem %d\n",item);
@@ -506,7 +646,10 @@ int64_t JCurve::screentap(float x,float y) {
         if(showmeals) {
             const float crit= (density*10);
             for(mealposition &p:mealpos) {
-                if((y>=p.mealstarty&&y<p.mealendy)&&abs(x-p.mealx)<crit)
+                const bool mealhit=portraitReadable()
+                    ? ((x>=p.mealstarty&&x<p.mealendy)&&abs(y-p.mealx)<crit)
+                    : ((y>=p.mealstarty&&y<p.mealendy)&&abs(x-p.mealx)<crit);
+                if(mealhit)
                     return (static_cast<int64_t>(p.mealpos)<<16)|((static_cast<int64_t> (p.mealbase)&0xf)<<8)|0xe;
                 }
 
@@ -514,11 +657,28 @@ int64_t JCurve::screentap(float x,float y) {
 #ifndef DONTTALK
         if(speakout) {
             for(auto &el:shownglucose) {
-                LOGGER("x=%f [%f,%f] y=%f [%f,%f] trend=%d\n", x,el.glucosevaluex,
-                       (el.glucosevaluex + headsize), y, (el.glucosevaluey - headsize),el.glucosevaluey,
-                      el.glucosetrend);
-                if (el.glucosevaluex > 0 && x > el.glucosevaluex && x < (el.glucosevaluex + headsize*1.2f) &&
-                    y < el.glucosevaluey && y > (el.glucosevaluey - headsize*.8f)) {
+                bool valuehit;
+                if(portraitReadable()&&el.touchleft>=0) {
+                    /* graphRotationMode()==1 in readable portrait mode.
+                     * Convert the JNI graph coordinates back to the physical
+                     * portrait coordinates used to store the visible block. */
+                    const float physicalx=y;
+                    const float physicaly=(float)surfaceheight-x;
+                    LOGGER("physical x=%f [%f,%f] y=%f [%f,%f] trend=%d\n",
+                           physicalx,el.touchleft,el.touchright,physicaly,
+                           el.touchtop,el.touchbottom,el.glucosetrend);
+                    valuehit=physicalx>=el.touchleft&&physicalx<=el.touchright&&
+                             physicaly>=el.touchtop&&physicaly<=el.touchbottom;
+                    }
+                else {
+                    LOGGER("x=%f [%f,%f] y=%f [%f,%f] trend=%d\n", x,el.glucosevaluex,
+                           (el.glucosevaluex + headsize), y, (el.glucosevaluey - headsize),el.glucosevaluey,
+                           el.glucosetrend);
+                    valuehit=el.glucosevaluex > 0 && x > el.glucosevaluex &&
+                             x < (el.glucosevaluex + headsize*1.2f) &&
+                             y < el.glucosevaluey && y > (el.glucosevaluey - headsize*.8f);
+                    }
+                if (valuehit) {
                     if(el.glucosevalue > 0) {
                         constexpr const int maxvalue = 80;
                         char value[maxvalue];
@@ -618,19 +778,19 @@ extern bool showsummarygraph;
 bool restart=false;
 //static int showoldscan(NVGcontext* avg,uint32_t ) ;
 
- void    JCurve::defaulterror(NVGcontext* avg,int scerror)   {
+ void    JCurve::defaulterror(NVGcontext* avg,int scerror,std::string_view sensorid)   {
         char buf[50];
         const errortype *error=usedtext->scanerrors;
         size_t len=snprintf(buf,50,error->first.data(),scerror);
-        showerror(avg,error->second,{buf,len});
+        showerror(avg,error->second,{buf,len},sensorid);
         }
 
 
- bool    JCurve::errorpair(NVGcontext* avg,const errortype &error) {
-    return showerror(avg,error.first,error.second);
+ bool    JCurve::errorpair(NVGcontext* avg,const errortype &error,std::string_view sensorid) {
+    return showerror(avg,error.first,error.second,sensorid);
     }
 
-int    JCurve::badscanMessage(NVGcontext* avg,int kind) {
+int    JCurve::badscanMessage(NVGcontext* avg,int kind,std::string_view sensorid) {
     const uint32_t nu=time(nullptr);
     int res=1;
     switch(showoldscan(avg,nu)) {
@@ -639,30 +799,30 @@ int    JCurve::badscanMessage(NVGcontext* avg,int kind) {
             const int scerror= kind&0xff;
             switch(scerror) {
                 case 0xF8: {
-                        errorpair(avg,usedtext->libre3zeroID);
+                        errorpair(avg,usedtext->libre3zeroID,sensorid);
                         };break;
                 case 0xF9: {
-                    showerror(avg,usedtext->nolibre3.first,usedtext->needsandroid8);
+                    showerror(avg,usedtext->nolibre3.first,usedtext->needsandroid8,sensorid);
                     };break;
                 case 0xFA: {
     //                showerror(avg,"FreeStyle Libre 3, Scan error", "Try again");
-                    errorpair(avg,usedtext->libre3scanerror);
+                    errorpair(avg,usedtext->libre3scanerror,sensorid);
                     };
                     break;
                 case 0xFB:
-                    errorpair(avg,usedtext->libre3wrongID);
+                    errorpair(avg,usedtext->libre3wrongID,sensorid);
                     break;
     //                showerror(avg,"Error, wrong account ID?","Specify in Settings->Libreview the same account used to activate the sensor");break;
                  case 0xFC: {
-                    errorpair(avg,usedtext->libre3scansuccess);
+                    errorpair(avg,usedtext->libre3scansuccess,sensorid);
     //                showerror(avg,"FreeStyle Libre 3 sensor", "Glucose values will now be received by Juggluco");
                     };break;
                 case 0xFD: {
-                    errorpair(avg,usedtext->unknownNFC);
+                    errorpair(avg,usedtext->unknownNFC,sensorid);
     //                showerror(avg,"Unrecognized NFC scan Error", "Try again");
                     };break;
                 case 0xFE: {
-                    errorpair(avg,usedtext->nolibre3);
+                    errorpair(avg,usedtext->nolibre3,sensorid);
     //                showerror(avg,"FreeStyle Libre 3 sensor","Not supported by this version of Juggluco"  );
                     };break;
                 case 0xFF: {
@@ -674,7 +834,7 @@ int    JCurve::badscanMessage(NVGcontext* avg,int kind) {
                     const int bufsize=error->second.size()+5;
                     char buf[bufsize];
                     size_t len=snprintf(buf,bufsize,error->second.data(),kind>>8);
-                    showerror(avg,error->first,{buf,len});
+                    showerror(avg,error->first,{buf,len},sensorid);
                     LOGGER("%s\n",buf);
                     };break;
     /*                        case 7: {
@@ -683,15 +843,15 @@ int    JCurve::badscanMessage(NVGcontext* avg,int kind) {
                                     };break; */
                 case 0:
                 case 15:
-                case 9: defaulterror(avg,scerror);
+                case 9: defaulterror(avg,scerror,sensorid);
                     break;
                 case 12: restart=true;
                 default: 
                  if(scerror>0x10) {
-                    defaulterror(avg,scerror);
+                    defaulterror(avg,scerror,sensorid);
                     }
                 else {
-                    errorpair(avg,usedtext->scanerrors[scerror]);
+                    errorpair(avg,usedtext->scanerrors[scerror],sensorid);
     //                errortype *error=usedtext->scanerrors+scerror; showerror(avg,error->first,error->second);
                     }
                 };break;
@@ -1000,9 +1160,13 @@ bool numpagepast() {
 extern int nrcolumns;
 int nrcolumns=1;
 int JCurve::numfrompos(const float x,const float y) {
-    int rows=((dheight-statusbarheight)/(double)textheight);
+    const float useheight=numberListDisplayHeight(*this);
+    const float usewidth=numberListDisplayWidth(*this);
+    const float usetextheight=numberListTextHeight(*this);
+    const int usestatustop=numberListStatusTop(*this);
+    int rows=(int)((useheight-usestatustop)/(double)usetextheight);
 
-    int ind= ((nrcolumns!=1&&x>(dleft+dwidth/2))?rows:0)+ std::min(rows-1,(int)((y-statusbarheight-dtop)/textheight));
+    int ind= ((nrcolumns!=1&&x>(dleft+usewidth/2))?rows:0)+ std::min(rows-1,(int)((y-usestatustop-dtop)/usetextheight));
     LOGGER("rows=%d, ind=%d\n",rows,ind);
     int i=0,index;
     for(int i=0;i<basecount;i++) {
@@ -1085,7 +1249,10 @@ void JCurve::numpagenum(const uint32_t tim) {
             }
         numiters[i].iter=ptr;
         }
-    const int percol=(dheight-statusbarheight)/textheight;
+    const float useheight=numberListDisplayHeight(*this);
+    const float usetextheight=numberListTextHeight(*this);
+    const int usestatustop=numberListStatusTop(*this);
+    const int percol=(int)((useheight-usestatustop)/usetextheight);
     const int onpage=nrcolumns*percol;
     #ifndef NOLOG
     time_t tims=tim;
@@ -1110,6 +1277,7 @@ void JCurve::numpagenum(const uint32_t tim) {
     }
 
  void    JCurve::shownumlist(NVGcontext* avg) {
+    PhysicalPortraitLayout physical(*this);
     startstep(avg,*getwhite());
     if(getpageoldest(0)!=nullptr) {
         showfromstart(avg);
@@ -1450,6 +1618,7 @@ template <class TX,class TY> NumHit *JCurve::nearbynum(const float tapx,const fl
 
  
 void    JCurve::showok(NVGcontext* avg,bool good,bool up) {
+    portraitmenupos=false;
     nvgFontSize(avg,headsize/4 );
     nvgTextAlign(avg,NVG_ALIGN_RIGHT|(up?NVG_ALIGN_TOP:NVG_ALIGN_BOTTOM));
     const float fromtop= mediumfont*2.0f;
@@ -1470,6 +1639,7 @@ void    JCurve::showOK(NVGcontext* avg,float xpos,float ypos) {
     showButton(avg, xpos, ypos,"OK"sv);
     }
 void    JCurve::showButton(NVGcontext* avg,float xpos,float ypos,std::string_view str) {
+    portraitmenupos=false;
     nvgFontSize(avg,headsize/4 );
 
     const char *start=&str[0];
@@ -1668,23 +1838,23 @@ extern                void wakewithcurrent();
 static bool  inmenu(float x,float y) {
     if(!nrmenu)
         return false;
+    menutouchcoords(x,y);
     if(x<menupos.left||x>=menupos.right) {
         return false;
         }
-    float dist=(menupos.bottom-menupos.top)/nrmenu;
-    if(dist<=0)
-        return false;
-    int item=(y-menupos.top)/dist;
+    int item=menuitemat(y);
     if(item>=0&&item<nrmenu) 
         return true;
     return false;
     }
 
- bool           JCurve::showerror(NVGcontext* avg,const string_view str1,const string_view str2) {
+ bool           JCurve::showerror(NVGcontext* avg,const string_view str1,const string_view str2,std::string_view sensorid) {
     startstep(avg,*getyellow());
     nvgFontSize(avg, midsize);
     nvgFillColor(avg, *getblack());
     nvgTextAlign(avg,NVG_ALIGN_LEFT|NVG_ALIGN_BOTTOM);
+    if(sensorid.size())
+            nvgText(avg, dleft+dwidth/10,dtop+statusbarheight+dheight/8, sensorid.begin(),sensorid.end());
     nvgText(avg, dleft+dwidth/10,dtop+dheight/3, str1.begin(), str1.end());
     nvgFontSize(avg, midsize*.8);
     nvgTextAlign(avg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
@@ -1928,11 +2098,11 @@ void setfloatptr() {
     }
 #else
 int menus=0;
-const int *menuopt0[]={&showui,&menus,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
+const int *menuopt0[]={nullptr,&menus,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
 
 
 const int *menuopt0b[]={nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
-const int *menuopt1[]={nullptr,&appcurve.showscans,&appcurve.showstream,&appcurve.showhistories,&appcurve.shownumbers,&appcurve.showmeals,&appcurve.invertcolors};
+const int *menuopt1[]={&showui,&appcurve.showscans,&appcurve.showstream,&appcurve.showhistories,&appcurve.shownumbers,&appcurve.showmeals,&appcurve.invertcolors};
 const int **optionsmenu[]={menuopt0,menuopt0b,menuopt1,nullptr};
 const int *premenuopt1[]={nullptr,&appcurve.showcalibratedscans,&appcurve.showcalibratedstream,&appcurve.showcalibratedhistories,nullptr,nullptr,nullptr};
 const int **preoptionsmenu[]={nullptr,nullptr,premenuopt1,nullptr};
@@ -1970,6 +2140,20 @@ int getmenu(int tapx,float dwidth) {
     return tapx*maxmenu/dwidth;
     }
  void    JCurve::withredisplay(NVGcontext* avg,uint32_t nu)  {
+#ifndef WEAROS
+    extern bool showsummarygraph;
+    if(showpers&&!showsummarygraph) {
+        // Statistics keeps the original native portrait layout.  The summary
+        // percentile graph remains a graph and therefore keeps the rotated
+        // long-time-axis portrait transform.
+        PhysicalPortraitLayout physical(*this);
+        startstep(avg,*getwhite());
+        graphpercentiles(avg);
+        tapx=-8000;
+        LOGAR("end withredisplay statistics");
+        return;
+        }
+#endif
     startstep(avg,*getwhite());
 #ifndef WEAROS
     if(showpers) {
@@ -2035,11 +2219,11 @@ bool  showtextbox(JCurve *j,NVGcontext* avg) {
 #endif
 #ifndef DONTTALK
 static bool speakmenutap(float x,float y) {
+    menutouchcoords(x,y);
     if(x<menupos.left||x>=menupos.right) {
         return false;
         }
-    float dist=(menupos.bottom-menupos.top)/nrmenu;
-    int item=(y-menupos.top)/dist;
+    int item=menuitemat(y);
     if(item>=0&&item<nrmenu) {
         LOGGER("menuitem selmenu=%d item=%d\n",selmenu,item);
         auto options=optionsmenu[selmenu];
@@ -2075,6 +2259,184 @@ extern bool hascalibrations;
 
 extern bool isRTL();
 
+void JCurve::showtextPortrait(NVGcontext* avg,time_t nu,int menu) {
+    const string_view *menuitem=usedtext->menustr[menu];
+    nrmenu=getmenulen(menu);
+    portraitmenupos=true;
+
+    constexpr const float randsize=
+#ifdef WEAROS
+        10
+#else
+        16
+#endif
+    ;
+
+    const float xrand=randsize*density;
+    const float yrand=randsize*density;
+    const float rowheight=menutextheight;
+
+    constexpr const char preset[]="✓  ";
+    constexpr const char preunset[]="-     ";
+    constexpr int presetlen=sizeof(preset)-1;
+
+    constexpr const char setmark[]="[x] ";
+    constexpr const char unsetmark[]="[  ]";
+    constexpr int setmarklen=sizeof(setmark)-1;
+    constexpr int unsetmarklen=sizeof(unsetmark)-1;
+
+    nvgSave(avg);
+    nvgResetTransform(avg);
+    nvgFontFaceId(avg,menufont);
+    nvgFontSize(avg,menusize);
+    nvgTextAlign(avg,NVG_ALIGN_LEFT|NVG_ALIGN_TOP);
+
+    bounds_t bounds;
+    const float prewidth=getsetlen(avg,50,50,preset,preset+presetlen,bounds);
+    const float optwidth=getsetlen(avg,50,50,unsetmark,unsetmark+unsetmarklen,bounds);
+
+    const int **preoptions=hascalibrations?preoptionsmenu[menu]:nullptr;
+    const int **options=optionsmenu[menu];
+    const float prepend=preoptions?prewidth:0.0f;
+    const float append=options?optwidth:0.0f;
+    const float gap=xrand*.5f;
+
+    float maxtextwidth=0.0f;
+    float maxtextheight=0.0f;
+    for(int i=0;i<nrmenu;i++) {
+        nvgTextBounds(avg,0,0,menuitem[i].data(),menuitem[i].data()+menuitem[i].size(),bounds.array);
+        const float w=bounds.xmax-bounds.xmin;
+        const float h=bounds.ymax-bounds.ymin;
+        if(w>maxtextwidth)
+            maxtextwidth=w;
+        if(h>maxtextheight)
+            maxtextheight=h;
+        }
+
+    float contentwidth=maxtextwidth;
+    if(preoptions)
+        contentwidth+=prepend+gap;
+    if(options)
+        contentwidth+=append+gap;
+
+    const float minmenu=
+#ifdef WEAROS
+        80
+#else
+        128
+#endif
+        *density;
+    const float nominalmax=280*density;
+    const float availleft=(float)physicalbarleft;
+    const float availright=(float)surfacewidth-physicalbarright;
+    const float availwidth=std::max(1.0f,availright-availleft);
+    const float maxmenuwidth=std::max(1.0f,std::min(nominalmax,availwidth-xrand));
+
+    float mwidth=contentwidth+2*xrand;
+    if(mwidth<minmenu)
+        mwidth=std::min(minmenu,maxmenuwidth);
+    else if(mwidth>maxmenuwidth)
+        mwidth=maxmenuwidth;
+
+    // Keep the four different vertical positions created by rotating the
+    // landscape menu zones.  Also keep their original left-to-right identity:
+    // menu 0 (landscape leftmost) opens leftmost in portrait, menu 3 rightmost.
+    const float menuplace=(float)surfaceheight/maxmenu;
+    const float anchory=(float)surfaceheight-(menu+.5f)*menuplace;
+    const float bottompad=yrand; // same visual padding below as above
+    const float lastlineheight=std::max(1.0f,maxtextheight);
+    const float boxheight=yrand+std::max(0,nrmenu-1)*rowheight+lastlineheight+bottompad;
+    const float mintop=(float)physicalbartop;
+    const float maxbottom=(float)surfaceheight-physicalbarbottom;
+    float boxtop=anchory-boxheight*.5f;
+    if(boxtop<mintop)
+        boxtop=mintop;
+    if(boxtop+boxheight>maxbottom)
+        boxtop=std::max(mintop,maxbottom-boxheight);
+
+    // Horizontal position follows the corresponding landscape menu zone.
+    // Wide menus are clamped to the usable physical portrait width.
+    const float anchorx=availleft+(menu+.5f)*availwidth/maxmenu;
+    float boxleft=anchorx-mwidth*.5f;
+    if(boxleft<availleft)
+        boxleft=availleft;
+    float boxright=boxleft+mwidth;
+    if(boxright>availright) {
+        boxright=availright;
+        boxleft=std::max(availleft,boxright-mwidth);
+        }
+
+    menupos={boxleft,boxtop,boxright,boxtop+boxheight};
+    logmenupos();
+
+    nvgBeginPath(avg);
+    nvgFillColor(avg,*getmenucolor());
+    nvgRect(avg,boxleft,boxtop,mwidth,boxheight);
+    nvgFill(avg);
+
+    const float contentleft=boxleft+xrand;
+    const float contentright=boxright-xrand;
+    float prex=0.0f,textx=0.0f,optx=0.0f;
+    int prealign=NVG_ALIGN_LEFT|NVG_ALIGN_TOP;
+    int textalign=NVG_ALIGN_LEFT|NVG_ALIGN_TOP;
+    int optalign=NVG_ALIGN_LEFT|NVG_ALIGN_TOP;
+
+    const bool rtl=isRTL();
+    if(rtl) {
+        if(options)
+            optx=contentleft;
+        textalign=NVG_ALIGN_RIGHT|NVG_ALIGN_TOP;
+        textx=contentright-(preoptions?(prepend+gap):0.0f);
+        if(preoptions)
+            prex=contentright-prepend;
+        }
+    else {
+        if(preoptions)
+            prex=contentleft;
+        textx=contentleft+(preoptions?(prepend+gap):0.0f);
+        if(options)
+            optx=contentright-append;
+        }
+
+    const float firsty=boxtop+yrand;
+    portraitmenufirsty=firsty;
+    portraitmenurowheight=rowheight;
+    portraitmenucontentbottom=firsty+std::max(0,nrmenu-1)*rowheight+lastlineheight;
+    nvgFillColor(avg,*getmenuforegroundcolor());
+
+    if(preoptions) {
+        nvgTextAlign(avg,prealign);
+        float y=firsty;
+        for(int i=0;i<nrmenu;i++,y+=rowheight) {
+            if(const int *optr=preoptions[i]) {
+                const char *op=*optr?preset:preunset;
+                nvgText(avg,prex,y,op,op+presetlen);
+                }
+            }
+        }
+
+    nvgTextAlign(avg,textalign);
+    float y=firsty;
+    for(int i=0;i<nrmenu;i++,y+=rowheight)
+        nvgText(avg,textx,y,menuitem[i].data(),menuitem[i].data()+menuitem[i].size());
+
+    if(options) {
+        nvgTextAlign(avg,optalign);
+        y=firsty;
+        for(int i=0;i<nrmenu;i++,y+=rowheight) {
+            if(const int *optr=options[i]) {
+                if(*optr)
+                    nvgText(avg,optx,y,setmark,setmark+setmarklen);
+                else
+                    nvgText(avg,optx,y,unsetmark,unsetmark+unsetmarklen);
+                }
+            }
+        }
+
+    nvgRestore(avg);
+    LOGAR("end showtextPortrait");
+    }
+
 void JCurve::showtext(NVGcontext* avg, time_t nu, int menu) {
     LOGAR("showtext");
 #ifdef WEAROS
@@ -2087,6 +2449,12 @@ void JCurve::showtext(NVGcontext* avg, time_t nu, int menu) {
         setnowmenu(nu);
 //  if(menu==1) setnewamount();
 #endif
+
+    if(portraitReadable()) {
+        showtextPortrait(avg,nu,menu);
+        return;
+        }
+    portraitmenupos=false;
 
     const string_view *menuitem = usedtext->menustr[menu];
     nrmenu = getmenulen(menu);
@@ -2338,10 +2706,71 @@ void JCurve::withbottom() {
         menutextheight=maxmenu;
     LOGGER("menutextheight=%f\n", menutextheight);
     }
+
+void JCurve::setSystemBars(int left,int top,int right,int bottom) {
+    physicalbarleft=left;
+    physicalbartop=top;
+    physicalbarright=right;
+    physicalbarbottom=bottom;
+
+    const int rotation=graphRotationMode();
+    switch(rotation) {
+        case 1: // physicalX = logicalY; physicalY = surfaceheight-logicalX
+            statusbarleft=bottom;
+            statusbarright=top;
+            statusbarheight=left*4/5;
+            dbottom=right;
+            break;
+        case 2: // physicalX = surfacewidth-logicalX; physicalY = surfaceheight-logicalY
+            statusbarleft=right;
+            statusbarright=left;
+            statusbarheight=bottom*4/5;
+            dbottom=top;
+            break;
+        case 3: // physicalX = surfacewidth-logicalY; physicalY = logicalX
+            statusbarleft=top;
+            statusbarright=bottom;
+            statusbarheight=right*4/5;
+            dbottom=left;
+            break;
+        default:
+            statusbarheight=top*4/5;
+            statusbarleft=left;
+            statusbarright=right;
+            dbottom=bottom;
+            break;
+        }
+    systemBarsGraphRotation=rotation;
+    if(height>0)
+        withbottom();
+    }
+
 void JCurve::resizescreen(int widthin, int heightin,int initscreenwidth) {
-    width=widthin;
-    height=heightin;
-    LOGGER("resize(%d,%d)\n",width,height);
+    surfacewidth=widthin;
+    surfaceheight=heightin;
+#ifdef WEAROS
+    portrait=false;
+#else
+    portrait=heightin>widthin;
+#endif
+    /* On nearly-square large screens, portrait is still the physical Android
+     * orientation (needed by stats/shownumlist), but the graph deliberately
+     * uses the current surface as-is, with ordinary landscape-style geometry
+     * and left-to-right menu quarters. Android itself may either freely rotate
+     * or be locked in this current orientation. */
+    if(portrait && !currentOrientationAsLandscape()) {
+        width=heightin;
+        height=widthin;
+        }
+    else {
+        width=widthin;
+        height=heightin;
+        }
+    LOGGER("resize physical=(%d,%d) logical=(%d,%d) portrait=%d\n",
+           surfacewidth,surfaceheight,width,height,portrait);
+
+    // Re-apply the last physical insets in the new orientation.
+    setSystemBars(physicalbarleft,physicalbartop,physicalbarright,physicalbarbottom);
     dwidth=width-dleft-dright; //Display area for graph in pixels
 
     textheight=density*48;
@@ -2395,7 +2824,7 @@ int getglucosestr(double nonconvert,char *glucosestr,int maxglucosestr,int gluco
    int32_t  gluval=last.getmgdL() ;
    if(calibrate) {
         auto cali= make_calibrator<ScanData>(hist);
-        if(double calibrated=cali.calibrateONE(last.t,gluval);!isnan(calibrated)) { 
+        if(double calibrated=cali.calibrateONE(last.t,gluval,CalibratePast);!isnan(calibrated)) { 
               gluval=std::round(calibrated);
               }
         }
@@ -2434,16 +2863,16 @@ int getglucosestr(double nonconvert,char *glucosestr,int maxglucosestr,int gluco
         if((dheight-(y-dtop))<th)
             y=dheight-th;
 
-    nvgText(avg, x,y, buf1, buf1+len1);
+    drawText(avg, x,y, buf1, buf1+len1);
     const bool showabove=y>(dheight/2);
     const float yunder=y+(showabove?-1:1)*headsize/2.0;
 //    nvgFontSize(avg,smallsize );
     nvgFontSize(avg,headsize*.134f );
-    nvgText(avg, endtime,yunder, buf, buf+len);
+    drawText(avg, endtime,yunder, buf, buf+len);
     const auto sensorname=hist->othershortsensorname();
     nvgTextAlign(avg,NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
     const auto sensorx=bounds[0] -sensleft;
-    nvgText(avg,sensorx,yunder, sensorname.begin(), sensorname.end());
+    drawText(avg,sensorx,yunder, sensorname.begin(), sensorname.end());
     const bool showdate=(nu-last.t)>=60*60*12;
     constexpr const int maxdatebuf=30;
     int datelen;
@@ -2453,7 +2882,7 @@ int getglucosestr(double nonconvert,char *glucosestr,int maxglucosestr,int gluco
             float datey=yunder+(showabove?-1:1)*sensorbounds.height;
             nvgTextAlign(avg,NVG_ALIGN_RIGHT|NVG_ALIGN_MIDDLE);
             datelen=snprintf(datebuf,maxdatebuf,"%s %d %s %04d",usedtext->speakdaylabel[tmbuf.tm_wday],tmbuf.tm_mday,usedtext->monthlabel[tmbuf.tm_mon],1900+tmbuf.tm_year);
-            nvgText(avg,right,datey, datebuf, datebuf+datelen);
+            drawText(avg,right,datey, datebuf, datebuf+datelen);
             }
         nvgStrokeWidth(avg, TrendStrokeWidth);
         nvgStrokeColor(avg, *getwhite());
@@ -2572,15 +3001,43 @@ int getglucosestr(double nonconvert,char *glucosestr,int maxglucosestr,int gluco
 
 
 void    JCurve::startstep(NVGcontext* avg,const NVGcolor &col) {
-        glViewport(0, 0, width, height);
+        /*
+         * Display rotation, orientation setting and physical/non-graph mode can
+         * change without a resize (notably a 180-degree Android rotation).
+         * Keep the logical graph insets synchronized with the actual transform.
+         */
+        const int rotation=graphRotationMode();
+        if(systemBarsGraphRotation!=rotation)
+            setSystemBars(physicalbarleft,physicalbartop,physicalbarright,physicalbarbottom);
+
+        const int viewwidth=surfacewidth>0?surfacewidth:width;
+        const int viewheight=surfaceheight>0?surfaceheight:height;
+        glViewport(0, 0, viewwidth, viewheight);
         glClearColor(col.r,col.g, col.b, col.a);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_CULL_FACE);
         glDisable(GL_DEPTH_TEST);
-        startstepNVG(avg,width,height);
+        startstepNVG(avg,viewwidth,viewheight);
+        switch(rotation) {
+            case 1:
+                nvgTranslate(avg,0.0f,(float)viewheight);
+                nvgRotate(avg,-NVG_PI/2.0f);
+                break;
+            case 2:
+                nvgTranslate(avg,(float)viewwidth,(float)viewheight);
+                nvgRotate(avg,NVG_PI);
+                break;
+            case 3:
+                nvgTranslate(avg,(float)viewwidth,0.0f);
+                nvgRotate(avg,NVG_PI/2.0f);
+                break;
+            default:
+                break;
+            }
         }
+
 
 void    JCurve::endstep(NVGcontext* avg) {
     nvgEndFrame(avg);

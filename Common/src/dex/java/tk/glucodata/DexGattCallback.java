@@ -180,6 +180,8 @@ private boolean connected=false;
     @SuppressLint("MissingPermission")
     @Override
     public void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
+        if(!acceptConnectionStateChange(bluetoothGatt,newState))
+            return;
         if (stop) {
             releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
@@ -866,10 +868,17 @@ private    void getdata(byte[] value) {
                 getdatacmd();
                 if(!has_service) {
                     Applic.RunOnUiThread(() -> {
-                        if (!mBluetoothGatt.discoverServices()) {
+                        var gatt=mBluetoothGatt;
+                        if(gatt==null) {
+                            Log.e(LOG_ID, "bonded(): mBluetoothGatt==null");
+                            disconnect();
+                            return;
+                            }
+                        if(!gatt.discoverServices()) {
                             Log.e(LOG_ID, "bonded(): bluetoothGatt.discoverServices()  failed");
                             disconnect();
-                        }
+                            return;
+                           }
                         });
                     }
                 };break;

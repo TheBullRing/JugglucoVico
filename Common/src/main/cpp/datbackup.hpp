@@ -22,7 +22,10 @@
 #pragma once 
 #include <string_view>
 #include <condition_variable>
+#include <chrono>
+#include <atomic>
 #include <thread>
+#include <algorithm>
 //#include <pthread.h>
 #include <vector>
 #ifndef HAVE_NOPRCTL
@@ -56,6 +59,23 @@ xquotes(MIRRORPORT)
 
 };
 
+inline static int android_user_id() {
+    static constexpr int PER_USER_RANGE = 100000;
+    uid_t uid = getuid();
+    return static_cast<int>(uid) / PER_USER_RANGE;
+   }
+inline std::string_view getDefaultPort() {
+        static constexpr const int defaultportnumber=
+        #ifdef MIRRORPORT
+        MIRRORPORT
+        #else
+        9996
+        #endif
+        ;
+        static char buf[7];
+        static const size_t len=snprintf(buf,6, "%d",defaultportnumber+android_user_id());
+        return {buf,len};
+        }
 
 #include "inout.hpp"
 #include "net/backup.hpp"
@@ -68,8 +88,12 @@ xquotes(MIRRORPORT)
 
 #include "mirrorstatus.hpp"
 #include "mirrorerror.h"
+#include "activity/cursor.hpp"
 #ifdef WEAROS_MESSAGES
-extern bool wearmessages[];
+extern std::atomic_bool wearmessages[];
+inline bool usemessagecarrier(int index,const passhost_t &host) {
+    return host.forcedmessagecarrier()||wearmessages[index].load();
+    }
 #endif
 #ifndef TESTMENU
 #include <mutex>
@@ -77,7 +101,6 @@ extern std::mutex change_host_mutex;
 #endif
 
 extern void setConnectTime(const int allindex,uint32_t tim);
-extern Connect *connections[];
 extern bool networkpresent;
 class Backup;
 extern Backup *backup;
@@ -93,15 +116,21 @@ struct changednums {
     int len;
     struct numspan changed[maxchanged];
     uint32_t lastmeal;
-    senddata_t reserved[28];
+    juggluco::activity::mirror::Cursor activityState;
+    senddata_t reserved[8];
     uint32_t lastlastpos;
     void clear() {
         len=1;
         changed[0]={};
         lastmeal=0;
         lastlastpos=0;
+        activityState={};
+        std::fill(std::begin(reserved),std::end(reserved),0);
         }
     };
+static_assert(offsetof(changednums,changed)==4&&offsetof(changednums,lastmeal)==804);
+static_assert(offsetof(changednums,activityState)==808&&offsetof(changednums,reserved)==828);
+static_assert(offsetof(changednums,lastlastpos)==836&&sizeof(changednums)==840&&alignof(changednums)==4);
 int  updatenums(crypt_t *,Connect *connect,struct changednums *nums);
 inline static constexpr const char backupdat[]="backup.dat";
 inline static constexpr const char orbackup[] ="orbackup.dat";
@@ -163,27 +192,26 @@ struct updateone {
     crypt_t *getcrypt() const; 
 
     template <typename Self>
-auto *getConnect(this Self&&self)  {
-        return connections[self.allindex];
+auto getConnect(this Self&&self)  {
+        return getconnection(self.allindex);
         }
-    int &getsock() const {
-        auto *con=((TCPConnect *)getConnect());
+    int getsock() const {
+        auto con=std::static_pointer_cast<TCPConnect>(getConnect());
         if(!con) {
-                static int minone=-1;
-                return minone;
+                return -1;
                 }
 //        return sendsocks[ind];
         return con->getSenderSock();
         }
     void setsock(int val) const {
-        if(auto *con=((TCPConnect *)getConnect())) {
+        if(auto con=std::static_pointer_cast<TCPConnect>(getConnect())) {
                 con->setSenderSock(val);
           } 
       //  sendsocks[ind]=val;
         }
 void    open() ;
 void close() {    
-    auto *con =connections[allindex];
+    auto con=getconnection(allindex);
     if(con) {
         con->closeSenderConnection();
 //       const int so= getsock();
@@ -321,7 +349,7 @@ void startactivereceivers() {
     const int len=getupdatedata()->hostnr;
     for(int i=0;i<len;i++) {
 /*        if(backup) {
-            if(auto *con=connections[i])
+            if(auto con=getconnection(i))
                 con->closeReceiverConnection();
             } */
         passhost_t *ph= getupdatedata()->allhosts+i;
@@ -330,7 +358,7 @@ void startactivereceivers() {
             }
         }
     }
-
+/*
 void resetindices() {
     LOGGER("resetindices hostnr=%d sendnr=%d\n",getupdatedata()->hostnr, getupdatedata()->sendnr);
     int maxsend=-1;
@@ -345,6 +373,39 @@ void resetindices() {
     getupdatedata()->sendnr=maxsend+1;
     LOGGER("sendnr=%d\n", getupdatedata()->sendnr);
     }
+*/
+void resetindices() {
+    auto *data=getupdatedata();
+
+    LOGGER("resetindices hostnr=%d sendnr=%d\n", data->hostnr,data->sendnr);
+
+    if(data->hostnr < 0 || data->hostnr > maxallhosts) {
+        LOGGER("resetindices: invalid hostnr=%d, resetting network configuration\n", data->hostnr);
+        data->hostnr=0;
+        data->sendnr=0;
+        return;
+    }
+
+    int maxsend=-1;
+    for(int i=0;i<data->hostnr;i++) {
+        int si=data->allhosts[i].index;
+
+        if(si < -1 || si >= maxsendtohost) {
+            LOGGER("resetindices: invalid allhosts[%d].index=%d\n",i,si);
+            data->allhosts[i].index=-1;
+            continue;
+           }
+
+        if(si>=0) {
+            data->tosend[si].setindex(si,i);
+            if(si>maxsend)
+                maxsend=si;
+          }
+        }
+
+    data->sendnr=maxsend+1;
+    LOGGER("sendnr=%d\n",data->sendnr);
+   }
 
 Backup(std::string_view base);
 
@@ -387,7 +448,7 @@ const char *getmyport() const{
     return getupdatedata()->port;
     }
 void startreceiver(bool always=false) {
-    if(receiveractive()&&!always)
+    if(receiveractive(always))
         return;
     ::stopreceiver();
     ::startreceiver(getupdatedata()->port,getupdatedata()->allhosts,getupdatedata()->hostnr);
@@ -396,7 +457,7 @@ void stopreceiver() {
     ::stopreceiver() ;
     for(int i=0;i<getupdatedata()->hostnr;i++) {
         if(getupdatedata()->allhosts[i].receivefrom) {
-            if(auto *con=connections[i])
+            if(auto con=getconnection(i))
                 con->shutdownReceiver();
             /*
             int sock=hostsocks[i];
@@ -427,8 +488,10 @@ const std::array<char,17> getpass(int pos) const {
 void getport(int pos,char *buf) {
     auto &host=getupdatedata()->allhosts[pos];
     const auto port=host.getport();
-    if(port==0&&!host.getActive())
-        strcpy(buf,defaultport);
+    if(port==0&&!host.getActive()) {
+        std::string_view port=getDefaultPort();
+        memcpy(buf,port.data(),port.size()+1);
+        }
     else
         snprintf(buf,6, "%d",port);
     }
@@ -458,7 +521,7 @@ void deletestart(int sendindex) {
 //                           const int sock= getupdatedata()->tosend[sin].getsock();
                            LOGGER("call wakestop %p\n",con_vars[sin]);
                            con_vars[sin]->wakebackuponly(wakestop);
-                            if(auto *con=connections[i]) {
+                            if(auto con=getconnection(i)) {
                                LOGGER(" shutdown %d\n",con->getSenderIdent());
                                con->shutdownSender();
                                }
@@ -497,13 +560,15 @@ void setindices(int start) {
     }
 
 void deletehost(int index) {
-    if(index>=getupdatedata()->hostnr)
+   const std::lock_guard<std::mutex> lock(change_host_mutex);
+
+    if(index<0||index>=getupdatedata()->hostnr)
         return;
     bool wasnet=networkpresent;
      networkpresent=false;
     LOGGER("deletehost(%d)\n",index);
     for(int it=index;it<getupdatedata()->hostnr;++it) {
-         auto *con=connections[it];
+         auto con=getconnection(it);
          if(con) {
             con->finish=true;
             con->endConnection();
@@ -525,7 +590,8 @@ void deletehost(int index) {
         memmove( getupdatedata()->lastused+index,getupdatedata()->lastused+index+1,fromend*sizeof(getupdatedata()->lastused[0]));
 //        memmove(  hostsocks+index, hostsocks+index+1,fromend*sizeof(hostsocks[0]));
         memmove(  lastuptodate+index, lastuptodate+index+1,fromend*sizeof(lastuptodate[0]));
-        memmove(  connections+index, connections+index+1,fromend*sizeof(connections[0]));
+        for(int i=index;i<getupdatedata()->hostnr;++i)
+            setconnection(i,getconnection(i+1));
         }
 
     if(sendindex>=0)      {
@@ -537,12 +603,13 @@ void deletehost(int index) {
         getupdatedata()->sendnr=0;
         stopreceiver();
         }
-    delete connections[getupdatedata()->hostnr];
-    connections[getupdatedata()->hostnr]=nullptr;
+    setconnection(getupdatedata()->hostnr,{});
     setindices(index);
     for(int i=index;i<getupdatedata()->hostnr;++i) {
-        connections[i]->finish=false;
-        connections[i]->setindex(i);
+        if(auto con=getconnection(i)) {
+            con->finish=false;
+            con->setindex(i);
+            }
         }
      if(!networkpresent)
         networkpresent=wasnet;
@@ -555,7 +622,7 @@ void clearhost(int index) {
         LOGGER("shutdown(%d)\n",so);
         ::shutdown(so,SHUT_RDWR);
         } */
-    if(auto *con=connections[host.allindex])
+    if(auto con=getconnection(host.allindex))
         con->restartSender();
     sensors->updateinit(index);
 
@@ -607,7 +674,7 @@ void changereceiver(int allindex,int index,const bool sendnums,const bool sendst
     else  {
         if(con_vars[index])
             con_vars[index]->wakebackuponly(wakestop);
-        if(auto *con=connections[allindex])
+        if(auto con=getconnection(allindex))
                 con->shutdownSender();
         }
     updateone &host=getupdatedata()->tosend[index];
@@ -768,7 +835,7 @@ void endactivereceive(int allindex) {
             --active_receivenr;
         
         ph->activereceive=0;
-        if(Connect *con=connections[allindex]) {
+        if(auto con=getconnection(allindex)) {
             LOGGER("endactivereceive(%d) shutdown(%d)\n",allindex,con->getReceiverIdent());
 
             con->shutdownReceiver();
@@ -796,8 +863,8 @@ void setactivereceive(int allindex,passhost_t *ph,bool startthread=true) {
        }
 
 
-int changeICEhost(const char *ICElabel,int index,const bool sendnums,const bool sendstream,const bool sendscans,const bool receive,string_view pass,uint32_t starttime,const char *label,bool side,bool startthreads=true);
-int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,string_view port,const bool sendnums,const bool sendstream,const bool sendscans,const bool restore,const bool receive,const bool activeonly,string_view pass,uint32_t starttime,bool passiveonly,const char *label=nullptr,const bool testip=true,bool startthreads=true,bool hashostname=false) {
+int changeICEhost(const char *ICElabel,int index,const bool sendnums,const bool sendstream,const bool sendscans,const bool receive,string_view pass,uint32_t starttime,const char *label,bool side,bool startthreads=true,int transport=passhost_t::transport_automatic,int bleclient=0);
+int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,string_view port,const bool sendnums,const bool sendstream,const bool sendscans,const bool restore,const bool receive,const bool activeonly,string_view pass,uint32_t starttime,bool passiveonly,const char *label=nullptr,const bool testip=true,bool startthreads=true,bool hashostname=false,int transport=-1,int bleclient=-1) {
     const int hostnr=getupdatedata()->hostnr;
     LOGGER("hostnr=%d changehost(%d,sendnums=%d,sendstream=%d,sendscans=%d,receive=%d,activeonly=%d,passiveonly=%d,label=%s port=%s nr=%d hashostname=%d\n",hostnr,index,sendnums,sendstream,sendscans,receive,activeonly,passiveonly,label,port.data(),nr,hashostname);
     if(index<0) 
@@ -806,9 +873,29 @@ int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,stri
         LOGAR("changehost: index>=maxallhosts");
         return -3;
         }
+    const bool newhost=(index==hostnr);
+    auto &thehost=getupdatedata()->allhosts[index];
+    std::array<sockaddr_in6,passhost_t::maxip> savedips;
+    std::copy_n(thehost.ips,passhost_t::maxip,savedips.begin());
+    const int savednr=thehost.nr;
+    const bool savedhostname=thehost.hostname;
+    const bool saveddetect=thehost.detect;
+    const bool savednoip=thehost.noip;
+    const int selectedtransport=transport<0?(newhost?passhost_t::transport_automatic:thehost.gettransport()):transport;
+    const bool selectedbleclient=bleclient<0?(newhost?false:thehost.bleclient):bleclient;
+    if(selectedtransport<passhost_t::transport_automatic||selectedtransport>passhost_t::transport_bluetooth) {
+        LOGGER("changehost: invalid mirror transport %d\n",selectedtransport);
+        return -7;
+        }
+    if((selectedtransport==passhost_t::transport_messages||selectedtransport==passhost_t::transport_bluetooth)&&
+            (!label||!*label)) {
+        LOGAR("changehost: Bluetooth/messages transport needs a label");
+        return -7;
+        }
     const bool receiveactive=receive&&activeonly;
     if(port.data()==nullptr||port.size()==0) {
-        port={defaultport,sizeof(defaultport)-1};
+      //  port={defaultport,sizeof(defaultport)-1};
+        port=getDefaultPort();
         }
     else {
         if(port.size()>5) {
@@ -817,7 +904,8 @@ int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,stri
             }
         }
     int portint=atoi(port.data());
-    if(!passiveonly&&(portint>65535||portint<1024)) {
+    if((selectedtransport==passhost_t::transport_automatic||selectedtransport==passhost_t::transport_tcp)&&
+            !passiveonly&&(portint>65535||portint<1024)) {
         LOGGER("port out of range %d\n",portint);
         return -1;
         }
@@ -833,14 +921,12 @@ int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,stri
             };
         };
     struct oldnet desnet;
-    const bool newhost=(index==hostnr);
     const bool sendto= sendnums|| sendstream|| sendscans;
     const bool reconnect=(receive&&!passiveonly)||(sendto&&!activeonly);
     int tohost;
     bool newthread=false;
     const bool dontopen=sendto&&passiveonly;
     int lmaxip=passhost_t::maxip-(label?1:0);
-    auto &thehost=getupdatedata()->allhosts[index];
     LOGGER("changehost newhost=%d thehost.index=%d\n",newhost,thehost.index);
     if(sendto) {
         if(newhost||thehost.index==-1) {  //Fout??
@@ -874,7 +960,7 @@ int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,stri
         thehost.index=-1;
         }
     if(!newhost) {  
-        if(auto *con=connections[index]) {
+        if(auto con=getconnection(index)) {
             if(!thehost.ICE) {
                 con->setindex( index);
                 goto keepTCP;
@@ -882,11 +968,10 @@ int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,stri
             con->finish=true;
             con->endConnection();
             sleep(1);
-            delete con;
             }
         }
 
-    connections[index]=new TCPConnect(index);
+    setconnection(index,std::make_shared<TCPConnect>(index));
     thehost.ICE=false;
     keepTCP:
     if(!newhost&&thehost.activereceive)
@@ -941,7 +1026,24 @@ int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,stri
         thehost.nr=0;
         ret=-2;
         }
-    if(detect) {
+    if(selectedtransport==passhost_t::transport_messages||selectedtransport==passhost_t::transport_bluetooth) {
+        if(newhost) {
+            thehost.nr=0;
+            thehost.hostname=false;
+            thehost.detect=false;
+            res=0;
+            }
+        else {
+            std::copy_n(savedips.begin(),passhost_t::maxip,thehost.ips);
+            thehost.nr=std::min(savednr,passhost_t::maxip-1);
+            thehost.hostname=savedhostname;
+            thehost.detect=saveddetect;
+            thehost.noip=savednoip;
+            res=thehost.nr;
+            ret=index;
+            }
+        }
+    else if(detect) {
         if(res<lmaxip)  {
             thehost.detect=true;
             thehost.ips[res]={.sin6_family=AF_INET6,.sin6_port=htons(atoi(port.data())),.sin6_addr=noaddress};
@@ -961,7 +1063,15 @@ int changehost(int index,JNIEnv *env,jobjectArray jnames,int nr,bool detect,stri
         }
     else
         thehost.hasname=false;
-    thehost.noip=!testip;
+    if((selectedtransport==passhost_t::transport_automatic||selectedtransport==passhost_t::transport_tcp)||newhost)
+        thehost.noip=!testip;
+    thehost.settransport(selectedtransport);
+    if(newhost)
+        thehost.blereverse=false;
+    thehost.bleclient=selectedbleclient;
+    LOGGER("changehost saved %s(%d): transport=%d bleclient=%d nr=%d detect=%d hostname=%d\n",
+            thehost.getnameif(),index,thehost.gettransport(),thehost.bleclient,
+            thehost.nr,thehost.detect,thehost.hostname);
     lastuptodate[index]=0;
 /*
 Receive           reconnect    receivefrom:
@@ -992,7 +1102,7 @@ false             false          0
     if(startthreads) {
         if(newthread)
             startthread(index,tohost);
-        if(!activeonly)
+        if((selectedtransport==passhost_t::transport_automatic||selectedtransport==passhost_t::transport_tcp)&&!activeonly)
             startreceiver(false);
         }
     LOGGER("activereceive was=%d nu=%d\n",thehost.activereceive,receiveactive);
@@ -1045,11 +1155,11 @@ void deactivateHost(int index,bool deactive) {
     if(host.deactivated==deactive)
         return;
 #ifdef JUGGLUCO_APP
-    if(host.wearos)
+    if(!host.usesnetworktransport()||host.wearos)
         setBlueMessage(index,false);
 #endif
     host.deactivated=deactive;
-    Connect *con=connections[index];
+    auto con=getconnection(index);
     if(deactive) {
         if(con) {
                 con->finish=true;
@@ -1106,7 +1216,7 @@ int getsendhostnr() const {
 void closeallsocks() {
     LOGAR("closeallsocks");
     for(int i=0;i<getupdatedata()->hostnr;i++) {
-        if(auto *con=connections[i]) {
+        if(auto con=getconnection(i)) {
              LOGGER("closeall receiver %d shutdown(%d)\n",i,con->getReceiverIdent());
             con->closeReceiverConnection();
             LOGGER("closeall sender %d shutdown(%d)\n",i,con->getSenderIdent());
@@ -1127,14 +1237,14 @@ void closeallsocks() {
 void endAllConnections() {
     LOGAR("endAllConnections");
     for(int i=0;i<getupdatedata()->hostnr;i++) {
-        if(auto *con=connections[i]) {
+        if(auto con=getconnection(i)) {
             con->endConnection();
             }
         }
      }
 void closesocksone(int allindex) {
     LOGGER("closesocksone %d\n",allindex);
-    if(Connect *connect=connections[allindex]) {
+    if(auto connect=getconnection(allindex)) {
         connect->shutdownReceiver();
         connect->shutdownSender();
         }
@@ -1160,9 +1270,17 @@ void closesocksone(int allindex) {
 bool sendwakesender(int h) {
     LOGGER("sendwakesender(%d)\n",h);
     updateone &shost=getupdatedata()->tosend[h];
-    shost.close();
-    shost.open();
-    if(auto *con=shost.getConnect()) {
+#ifdef WEAROS_MESSAGES
+    // A wake command can use the established message stream.
+    if(auto con=shost.getConnect();!usemessagecarrier(shost.allindex,getupdatedata()->allhosts[shost.allindex])||
+            !con||!con->isConnectedSender()) {
+#endif
+        shost.close();
+        shost.open();
+#ifdef WEAROS_MESSAGES
+        }
+#endif
+    if(auto con=shost.getConnect()) {
         if(con->finish) {
             LOGGER("sendwakesenser: %d finish\n",h);
             return false;
@@ -1180,9 +1298,17 @@ bool sendwakesender(int h) {
 bool sendwakestreamsender(int h) {
     LOGGER("sendwakestreamsender(%d)\n",h);
     updateone &shost=getupdatedata()->tosend[h];
-    shost.close();
-    shost.open();
-    if(auto *con=shost.getConnect()) {
+#ifdef WEAROS_MESSAGES
+    // A wake command can use the established message stream.
+    if(auto con=shost.getConnect();!usemessagecarrier(shost.allindex,getupdatedata()->allhosts[shost.allindex])||
+            !con||!con->isConnectedSender()) {
+#endif
+        shost.close();
+        shost.open();
+#ifdef WEAROS_MESSAGES
+        }
+#endif
+    if(auto con=shost.getConnect()) {
         if(con->finish) {
             LOGGER("sendwakestreamsender: %d finish\n",h);
             return false;
@@ -1201,7 +1327,7 @@ bool sendwakestreamsender(int h) {
 void backupthread(int allindex,int sendindex) {
     auto &host=getupdatedata()->tosend[sendindex];
 #ifndef NOLOG
-   auto *con=connections[allindex];
+   auto con=getconnection(allindex);
     LOGGER("%d backupthread, wearos=%d con_vars=%p sock=%i %p\n", allindex,getupdatedata()->allhosts[allindex].wearos, con_vars[sendindex],con?con->getSenderIdent():-1,host.getcrypt());
 #endif
 //    const int sendindex=getupdatedata()->allhosts[allindex].index;
@@ -1221,9 +1347,9 @@ void backupthread(int allindex,int sendindex) {
        }
     uintptr_t current=0;
        while(true) {
-          if(doend(sendindex)) 
+          if(doend(sendindex))
             return;
-        if(!con_vars[sendindex]) { 
+        if(!con_vars[sendindex]) {
                 LOGGER("con_vars[%d]==null\n",sendindex);
                 return;
                 }
@@ -1236,7 +1362,11 @@ void backupthread(int allindex,int sendindex) {
             return;
          current=con_vars[sendindex]->dobackup;
          con_vars[sendindex]->dobackup=0;
-         if(!passive) {
+         if(!passive
+#ifdef WEAROS_MESSAGES
+                 ||usemessagecarrier(allindex,getupdatedata()->allhosts[allindex])
+#endif
+                 ) {
             notpassive(current,sendindex);
             }
          if(current==wakestream) {
@@ -1273,7 +1403,7 @@ bool doend(int sendindex) {
     }
 
 int updateproc(condvar_t *varsptr,uintptr_t cond,updateone &shost,int  (updateone::*proc)( )) {
-      if(varsptr->dobackup&wakestop)  
+      if(varsptr->dobackup&wakestop)
           return 0;
     if(cond) {
         int res= (shost.*proc)();
@@ -1284,11 +1414,11 @@ int updateproc(condvar_t *varsptr,uintptr_t cond,updateone &shost,int  (updateon
             shost.close();
             if(
 #ifdef WEAROS_MESSAGES
-            (!pass->wearos||!wearmessages[shost.allindex])&&
+            !usemessagecarrier(shost.allindex,*pass)&&
 #endif
             pass->sendpassive)
                 return 0;
-              if(varsptr->dobackup&wakestop)  
+              if(varsptr->dobackup&wakestop)
                 return 0;
             shost.open();
               if(varsptr->dobackup&wakestop)   {
@@ -1357,14 +1487,14 @@ void lockwait(uintptr_t &current,int h) {
     LOGGER("%d after lock\n",h)    ;
     con_vars[h]->dobackup=con_vars[h]->dobackup&~current;
     LOGGER("%d dobackup=%lu\n",h,con_vars[h]->dobackup)    ;
-    con_vars[h]->backupcond.wait(lck, [h] {return backup->con_vars[h]->dobackup; });   
+    con_vars[h]->backupcond.wait(lck, [h] {return backup->con_vars[h]->dobackup; });
     LOGGER("%d afterwait\n",h)    ;
     current=con_vars[h]->dobackup;
     #ifndef NOLOG
     LOGGER("%d after current=%lu\n",h,current)    ;
     int allindex=getupdatedata()->tosend[h].allindex;
-    auto *con=connections[allindex];
-   LOGGER("%d after connections[%d]=%p eSenderIdent=%d\n",h,allindex,con,con?con->getSenderIdent():-1)    ;
+    auto con=getconnection(allindex);
+   LOGGER("%d after connections[%d]=%p eSenderIdent=%d\n",h,allindex,con.get(),con?con->getSenderIdent():-1)    ;
    #endif
     }
 
@@ -1409,12 +1539,26 @@ void wakebackup(myuintptr_t kind=wakeall){
                 const auto &here=getupdatedata()->tosend[i];
                 const int index=here.allindex;
                 const auto &host=getupdatedata()->allhosts[index];
-                if(host.wearos) {
-                    LOGAR("networkabsent wearos->wake");
+                // Automatic mirrors still report that they use network transport,
+                // even while their runtime carrier has fallen back to the
+                // message/Direct-Bluetooth bridge.  With Wi-Fi/network absent
+                // the old test therefore suppressed the ordinary database
+                // update wake after the initial BLE synchronization: the GATT
+                // link stayed healthy and exchanged probes, but no later values
+                // were queued.  A currently selected message carrier must be
+                // treated as an available non-network path here.
+                const bool messagecarrier=
+#ifdef WEAROS_MESSAGES
+                    usemessagecarrier(index,host);
+#else
+                    false;
+#endif
+                if(host.wearos||!host.usesnetworktransport()||messagecarrier) {
+                    LOGAR("networkabsent wearable/non-network/message mirror -> wake");
                     doe=true;
                     }
                 else {
-                    LOGAR("networkabsent !wearos");
+                    LOGAR("networkabsent network-only mirror");
                     doe=false;
                     }
                 }
@@ -1508,6 +1652,3 @@ inline int gethostindex(const passhost_t *host) {
 
 
 extern void startbackup(std::string_view globalbasedir) ;
-
-
-

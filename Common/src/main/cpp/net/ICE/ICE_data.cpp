@@ -121,7 +121,7 @@ void ICE_data::setRTO(int rtt) {
 void ICE_data::ackeddata(juice_agent_t *agent,udp_header  *head) {
       int index=head->index;
       if(head->trans_id==send_trans_id) {
-          if(index<0||index>=acknowledged.size()) {
+          if(index<0||index>=acknowledged.size()||index>lastpacket) {
             LOGGERICE("ackeddata (%d ERROR received ack for index %d\n",side,index);
              return;
              }
@@ -143,7 +143,7 @@ void ICE_data::ackeddata(juice_agent_t *agent,udp_header  *head) {
             }
             }
           else {
-              while(acknowledged[nextAck])
+              while(nextAck<lastpacket&&acknowledged[nextAck])
                 ++nextAck;
               if(nextAck==lastpacket) {
                      std::lock_guard<std::mutex> lck(sendMutex);
@@ -168,10 +168,11 @@ void ICE_data::ackeddata(juice_agent_t *agent,udp_header  *head) {
           }
     }
 void ICE_data::on_recv(juice_agent_t *agent, const char *data, size_t size,int allindex) {
+   if(size<sizeof(udp_header))return;
    udp_header  *head=const_cast<udp_header *>(reinterpret_cast<const udp_header *>(data));
    switch(head->com) {
         case START: {
-            ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+            auto con=getconnectionas<ICEConnect>(allindex);
             if(!con) {
                 LOGGERICE("allindex=%d on_recv START, but con=null\n",allindex);
                 return;
@@ -190,7 +191,7 @@ void ICE_data::on_recv(juice_agent_t *agent, const char *data, size_t size,int a
                 if(!con->other_started) {
                     con->other_started=true;
                     if(!con->start_ack) {
-                            std::thread th{&ICE_data::sendStart,this,agent,con};
+                            std::thread th{[this,agent,con] { sendStart(agent,con.get()); }};
                             th.detach();
                             }
                      }
@@ -261,7 +262,7 @@ void ICE_data::on_recv(juice_agent_t *agent, const char *data, size_t size,int a
                        return;
                        }
                 LOGGERICE("%d received END\n",side);
-                if(ICEConnect *con=static_cast<ICEConnect *>(connections[allindex])) {
+                if(auto con=getconnectionas<ICEConnect>(allindex)) {
                         con->endConnectionHere();
                         }
                 
@@ -280,6 +281,11 @@ void ICE_data::on_recv(juice_agent_t *agent, const char *data, size_t size,int a
                 return ;
                 }
            if(!head->ack) {
+              if(index>=sendwindow||size>packetsize||size<=sizeof(udp_header)||
+                    (!head->fin&&size!=packetsize)) {
+                  LOGGERICE("side=%d invalid DATA packet index=%d size=%zu\n",side,index,size);
+                  return;
+              }
               if(idSmallerOrEqual( head->trans_id,receive_trans_id)) {
                   head->ack=true;
                   if(!sendWithError(agent, data,sizeof(udp_header))) {
@@ -288,7 +294,7 @@ void ICE_data::on_recv(juice_agent_t *agent, const char *data, size_t size,int a
                   if(head->trans_id==receive_trans_id) {
                     askedData=true;
                     LOGGERICE("trans_id=%d side=%d received packet %d\n",head->trans_id,side,index);
-                    if(index>=0||index<acknowledged.size()) {
+                    if(index>=0&&index<acknowledged.size()) {
                         const char *input=data+sizeof(udp_header);
                         int  inputlen=size-sizeof(udp_header);
                         int pos= index*dataunit;
@@ -332,7 +338,7 @@ bool ICE_data::sendWithError(juice_agent_t *agent,const char *data, int len) {
             LOGGER("allindex=%d sendWithError success\n",allindex);
             return true;
             }
-        ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+        auto con=getconnectionas<ICEConnect>(allindex);
         con->endConnectionHere(); 
         LOGGER("allindex=%d sendWithError failed\n",allindex);
         return false;
@@ -379,6 +385,10 @@ uint32_t ICE_data::sendpacket(juice_agent_t *agent,uint16_t trans_id,const char 
             return rel_msec;
             }
 int ICE_data::senddata(juice_agent_t *agent, const char *data,int len) {
+        if(len<=0||len>maxrelay) {
+           LOGGERICE("side=%d ICE block outside packet window: %d bytes\n",side,len);
+           return -1;
+        }
         if(shutdown) {
            LOGGERICE("allindex=%d side=%d: senddata  shutdown 1\n",allindex,side);
            return -1;
@@ -403,7 +413,7 @@ int ICE_data::senddata(juice_agent_t *agent, const char *data,int len) {
            LOGGERICE("allindex=%d side=%d: senddata  agent==null 2\n",allindex,side);
            return -1;
            }
-        ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+        auto con=getconnectionas<ICEConnect>(allindex);
         if(!con) {
                 LOGGERICE("side=%d senddata ICEConnect==null\n",side);
                 return -1;
@@ -595,7 +605,7 @@ void ICE_data::setshutdown() {
     }
 
 void ICE_data::sendshutDown(juice_agent_t *agent) {
-       ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+       auto con=getconnectionas<ICEConnect>(allindex);
        if(!con) {
           LOGGERICE( "ICE_data::end connections[%d]==null\n",allindex);
           return;
@@ -631,7 +641,7 @@ void ICE_data::shutDown(juice_agent_t *agent) {
 void ICE_data::end(juice_agent_t *agent) {
        setshutdown();
        LOGGERICE("ICE_data::end allindex=%d send_trans_id=%d side=%d\n",allindex,send_trans_id,side);
-       ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+       auto con=getconnectionas<ICEConnect>(allindex);
        if(!con) {
           LOGGERICE( "ICE_data::end connections[%d]==null\n",allindex);
           return;
@@ -682,7 +692,7 @@ int ICE_data::receive(juice_agent_t *agent,char *buf, const int maxbuf) {
                 if(datalen>offset)
                     return true;
                 if(!askedData) {
-                    ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+                    auto con=getconnectionas<ICEConnect>(allindex);
                     if(con->isConnected)  {
                            if(asked>10) {
                                 if((time(nullptr)-beginReceive)>3*60) {

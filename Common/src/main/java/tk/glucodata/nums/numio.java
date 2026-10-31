@@ -38,7 +38,7 @@ import static android.os.Build.VERSION.RELEASE;
 import static java.lang.System.exit;
 import static tk.glucodata.Applic.isWearable;
 import static tk.glucodata.Log.doLog;
-import static tk.glucodata.Natives.setDevice;
+import static tk.glucodata.Natives.saveDevice;
 import static tk.glucodata.Natives.startmeals;
 import static tk.glucodata.Natives.startsensors;
 
@@ -93,7 +93,7 @@ static void makefilesfailed()   { throw new noAccessToFilesDirException("no acce
 static public boolean setlibrary(Applic con) {
 if(true) {
    var loc=Locale.getDefault();
-   String country=loc.getCountry();
+   String country=tk.glucodata.util.getCountry();
    var locstr=loc.getLanguage();
    Applic.curlang=locstr;
    File files=con.getFilesDir();
@@ -203,11 +203,11 @@ if(true) {
           }
           build.append('\n');
           Natives.log(build.toString());
-           final String version= BuildConfig.VERSION_CODE+" "+ BuildConfig.VERSION_NAME +" "+ BuildConfig.BUILD_TIME+"\n";
+           final String version= BuildConfig.VERSION_CODE+" "+ BuildConfig.VERSION_NAME +" "+ tk.glucodata.BuildTime.TIME+"\n";
           if(doLog) {Log.i(LOG_ID,version+locstr+" "+country+" nativeDir="+nativedir);};
       }
 
-   setDevice(Build.MANUFACTURER, Build.MODEL, Build.VERSION.SDK_INT);
+   saveDevice(Build.MANUFACTURER, Build.MODEL,Build.PRODUCT, Build.VERSION.SDK_INT);
 
    startsensors( );
    startmeals();

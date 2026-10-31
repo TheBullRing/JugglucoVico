@@ -22,6 +22,8 @@
 #include <vector>
 #include <string_view>
 #include <cstring>
+#include <mutex>
+#include <string>
 #include <cinttypes>
 #include <cmath>
 #include <algorithm>
@@ -245,8 +247,6 @@ extern "C" JNIEXPORT jboolean  JNICALL   fromjava(setlabel)(JNIEnv *env, jclass 
     env->GetStringUTFRegion(jlabel, 0,jlen, label);
     label[len]='\0';
     rtl_to_visual_utf8(label,settings->data()->vars[index].name,12);
-//    env->GetStringUTFRegion(jlabel, 0,jlen, settings->data()->vars[index].name);
-//    settings->data()->vars[index].name[reslen]='\0';
     settings->data()->vars[index].prec=prec;
     settings->data()->vars[index].weight=settings->tomgperL(weight);
     if(index>=settings->varcount()||index<0)  {
@@ -647,19 +647,7 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(writealarmsuspension)(JNIEnv *env,
     LOGGER("writealarmsuspension(%d,%hd)\n",type,sus);
     settings->data()->getalarmringtone(type).wait=sus;
     }
-extern bool fixatex,fixatey;
-bool fixatex=true,fixatey=true;
-extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getfixatex)(JNIEnv *env, jclass cl) {
-    return settings->data()->fixatex;
-    }
 
-extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getfixatey)(JNIEnv *env, jclass cl) {
-    return settings->data()->fixatey;
-    }
-extern "C" JNIEXPORT void  JNICALL   fromjava(setfixatey)(JNIEnv *env, jclass cl,jboolean val) {
-    settings->data()->fixatey=val;
-    fixatey=val;
-    }
 extern int carbotype;
 extern "C" JNIEXPORT void  JNICALL   fromjava(setmealvar)(JNIEnv *env, jclass cl,jbyte val) {
     const int count=settings->getlabelcount();
@@ -804,7 +792,7 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(setusexdripwebserver)(JNIEnv *env,
 #ifndef WEAROS
     settings->data()->usexdripwebserver=val;
     if(val) {
-        startwatchthread(defaulthttpport);
+        startwatchthread(settings->data()->httpport);
         }
     else {
         stopwatchthread(); 
@@ -822,45 +810,142 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(setuseWearos)(JNIEnv *env, jclass 
     }
 
 
+
+// The caller holds newLibre3ReceiverMutex. This counter is not persisted.
+#ifndef WEAROS
+static std::mutex newLibre3ReceiverMutex;
+static uint64_t newLibre3ReceiverGeneration=0;
+static void invalidateNewLibre3ReceiverID() {
+    settings->data()->newLibre3ReceiverIDreceived=false;
+    ++newLibre3ReceiverGeneration;
+    }
+extern "C" JNIEXPORT jboolean JNICALL fromjava(getnewLibre3ReceiverIDreceived)(JNIEnv *env,jclass cl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    return settings->data()->newLibre3ReceiverIDreceived;
+    }
+extern "C" JNIEXPORT void JNICALL fromjava(setnewLibre3ReceiverIDreceived)(JNIEnv *env,jclass cl,jboolean value) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    if(!value)
+        invalidateNewLibre3ReceiverID();
+    else
+        settings->data()->newLibre3ReceiverIDreceived=true;
+    }
+extern "C" JNIEXPORT jboolean JNICALL fromjava(getnewLibre3Activation)(JNIEnv *env,jclass cl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    return settings->data()->newLibre3Activation;
+    }
+extern  void  setAskForAccount();
+extern "C" JNIEXPORT void JNICALL fromjava(setnewLibre3Activation)(JNIEnv *env,jclass cl,jboolean value) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    settings->data()->newLibre3Activation=value;
+
+    if(value&&!settings->data()->newLibre3ReceiverIDreceived)  {
+            setAskForAccount();
+            }
+    }
+extern "C" JNIEXPORT jboolean JNICALL fromjava(getnewLibre3Takeover)(JNIEnv *env,jclass cl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    return settings->data()->newLibre3Takeover;
+    }
+extern "C" JNIEXPORT void JNICALL fromjava(setnewLibre3Takeover)(JNIEnv *env,jclass cl,jboolean value) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    settings->data()->newLibre3Takeover=value;
+    }
+extern "C" JNIEXPORT jlong JNICALL fromjava(getnewLibre3ReceiverID)(JNIEnv *env,jclass cl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    // A missing ID must not be mistaken for zero, which is a valid receiver ID.
+    return settings->data()->newLibre3ReceiverIDreceived ? settings->data()->newLibre3ReceiverID : -1LL;
+    }
+extern "C" JNIEXPORT void JNICALL fromjava(setnewLibre3ReceiverID)(JNIEnv *env,jclass cl,jlong value) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    settings->data()->newLibre3ReceiverID=value;
+    }
+extern "C" JNIEXPORT jlong JNICALL fromjava(getnewLibre3ReceiverGeneration)(JNIEnv *env,jclass cl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    return static_cast<jlong>(newLibre3ReceiverGeneration);
+    }
+// Publish the number and received flag only if the account has not changed.
+extern "C" JNIEXPORT jboolean JNICALL fromjava(savenewLibre3ReceiverID)(JNIEnv *env,jclass cl,jlong value,jlong generation) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    if(value<0 || value>0xffffffffLL || static_cast<uint64_t>(generation)!=newLibre3ReceiverGeneration)
+        return false;
+    LOGGER("savenewLibre3ReceiverID(%lld,%lld)\n",(long long)value,(long long)generation);
+
+    settings->data()->newLibre3ReceiverID=value;
+    settings->data()->newLibre3ReceiverIDreceived=true;
+    return true;
+    }
+
 extern "C" JNIEXPORT void  JNICALL   fromjava(setlibrebaseurl)(JNIEnv *env, jclass cl,jboolean libre3,jstring jbaseurl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
     char *url=libre3?settings->data()->libre3baseurl:settings->data()->librebaseurl;
+    const std::string previous(url);
     const jint jlen = env->GetStringLength(jbaseurl);
     env->GetStringUTFRegion(jbaseurl, 0,jlen, url);
     jint len = env->GetStringUTFLength( jbaseurl);
     url[len]='\0';
+    if(libre3 && previous!=url)
+        invalidateNewLibre3ReceiverID();
      }
 extern "C" JNIEXPORT jstring  JNICALL   fromjava(getlibrebaseurl)(JNIEnv *env, jclass cl,jboolean libre3) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
     const char *url=libre3?settings->data()->libre3baseurl:settings->data()->librebaseurl;
      return env->NewStringUTF(url);
     }
 
 extern "C" JNIEXPORT void  JNICALL   fromjava(setlibreemail)(JNIEnv *env, jclass cl,jstring jemail) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    const std::string previous(settings->data()->libreemail);
     const jint jlen = env->GetStringLength(jemail);
     env->GetStringUTFRegion(jemail, 0,jlen, settings->data()->libreemail);
     jint len = env->GetStringUTFLength( jemail);
     settings->data()->libreemail[len]='\0';
+    if(previous!=settings->data()->libreemail)
+        invalidateNewLibre3ReceiverID();
+    settings->data()->libreinit=false;
+    settings->data()->libreinit3=false;
     if(jlen<3)
         settings->data()->uselibre=false;
+
      }
 extern "C" JNIEXPORT jstring  JNICALL   fromjava(getlibreemail)(JNIEnv *env, jclass cl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
      return env->NewStringUTF(settings->data()->libreemail);
     }
 #include "mixpass.hpp"
 extern "C" JNIEXPORT void  JNICALL   fromjava(setlibrepass)(JNIEnv *env, jclass cl,jstring jpass) {
     const jint jlen = env->GetStringLength(jpass);
-    char tmp[36*2+1];
+    char tmp[36*2+1+30];
     env->GetStringUTFRegion(jpass, 0,jlen, tmp);
     jint len = env->GetStringUTFLength( jpass);
     for(int i=0;i<len;++i) {
-        if(tmp[i]=='"') {
-            memmove(tmp+1,tmp,len-i);
-            tmp[i]='\\';
-            ++i;
-            ++len;
-            }
-        }
+        switch(tmp[i]) {
+            case '\'': {
+                constexpr const char replace[]=R"(\u0027)";//not needed but Abbotts Libre 3 app does do it.
+                constexpr const int replen=sizeof(replace)-1;
+                const int leftlen=len-i-1;
+                if(leftlen>0)
+                    memmove(tmp+i+replen,tmp+1+i,leftlen);
+                memcpy(tmp+i,replace,replen);
+                constexpr const int increase=replen-1;
+                i+=increase;
+                len+=increase;
+                break;
+                };
+            case '"':
+            case '\\': {
+                memmove(tmp+1+i,tmp+i,len-i);
+                tmp[i]='\\';
+                ++i;
+                ++len;
+                break;
+                }
+           };
+        };
     if(len>36)
         len=36;
+    tmp[len]='\0';
+    LOGGER("setlibrepass %s\n",tmp);
     mix(mixpass, reinterpret_cast<uint8_t *>(tmp), reinterpret_cast<uint8_t *>(settings->data()->librepass), len);
     settings->data()->librepasslen=len;
      }
@@ -942,13 +1027,18 @@ extern "C" JNIEXPORT jstring  JNICALL   fromjava(getlibreDeviceID)(JNIEnv *env, 
      return env->NewStringUTF(getDeviceID(libre3).data());
     }
 extern "C" JNIEXPORT void  JNICALL   fromjava(setlibreAccountID)(JNIEnv *env, jclass cl,jstring jAccountID) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
+    const auto previous=settings->data()->libreviewAccountID;
     const jint jlen = env->GetStringLength(jAccountID);
      auto &accountid=settings->data()->libreviewAccountID;
      accountid={};
     env->GetStringUTFRegion(jAccountID, 0,jlen, accountid.data());
     settings->data()->_nullchar1='\0';
+    if(previous!=accountid)
+        invalidateNewLibre3ReceiverID();
      }
 extern "C" JNIEXPORT jstring  JNICALL   fromjava(getlibreAccountID)(JNIEnv *env, jclass cl) {
+    std::lock_guard<std::mutex> lock(newLibre3ReceiverMutex);
      return env->NewStringUTF(settings->data()->libreviewAccountID.data());
     }
 
@@ -1019,7 +1109,7 @@ extern "C" JNIEXPORT jstring  JNICALL   fromjava(getnewYuApiKey)(JNIEnv *env, jc
      return env->NewStringUTF(YuKey);
     }
 
-
+#endif
 
 extern void startthreads() ;
 extern bool inituploader(JNIEnv *env);
@@ -1120,11 +1210,11 @@ extern "C" JNIEXPORT jfloat  JNICALL   fromjava(getlibrefoodweight)(JNIEnv *env,
     }
 
 #endif
-extern "C" JNIEXPORT void  JNICALL   fromjava(setsaytreatments)(JNIEnv *env, jclass cl,jboolean val) {
-    settings->data()->saytreatments=val;
+extern "C" JNIEXPORT void  JNICALL   fromjava(setGiveAmounts)(JNIEnv *env, jclass cl,jboolean val) {
+    settings->data()->GiveAmounts=val;
     }
-extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getsaytreatments)(JNIEnv *env, jclass cl) {
-    return settings->data()->saytreatments;
+extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getGiveAmounts)(JNIEnv *env, jclass cl) {
+    return settings->data()->GiveAmounts;
     }
 
 extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getpostTreatments)(JNIEnv *env, jclass cl) {
@@ -1143,7 +1233,7 @@ extern "C" JNIEXPORT jboolean  JNICALL   fromjava(canSendNumbers)(JNIEnv *env, j
             return true;
         }
     else  {
-        if(settings->data()->saytreatments ||settings->data()->postTreatments)
+        if(settings->data()->GiveAmounts ||settings->data()->postTreatments)
             return true;
         }
     const auto *nums=night?settings->data()->Nightnums:settings->data()->librenums;
@@ -1247,7 +1337,11 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(setJugglucobroadcast)(JNIEnv *env,
     settings->data()->jugglucobroadcast=val;
     }*/
 
+        extern int updateMirrorSides();
 extern "C" JNIEXPORT void  JNICALL   fromjava(setinitVersion)(JNIEnv *env, jclass cl,jint val) {
+    if(settings->data()->initVersion<39)
+          updateMirrorSides();
+
     settings->data()->initVersion=val;
     }
 extern "C" JNIEXPORT jint  JNICALL   fromjava(getinitVersion)(JNIEnv *env, jclass cl) {
@@ -1366,6 +1460,13 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(setsslport)(JNIEnv *env, jclass cl
     }
 extern "C" JNIEXPORT jint  JNICALL   fromjava(getsslport)(JNIEnv *env, jclass cl) {
     return settings->data()->sslport;
+    }
+
+extern "C" JNIEXPORT void  JNICALL   fromjava(sethttpport)(JNIEnv *env, jclass cl,jint val) {
+    settings->data()->httpport=val;
+    }
+extern "C" JNIEXPORT jint  JNICALL   fromjava(gethttpport)(JNIEnv *env, jclass cl) {
+    return settings->data()->httpport;
     }
 
 extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getuseuploader)(JNIEnv *env, jclass cl) {
@@ -1492,6 +1593,7 @@ struct dose_t {
 
 #include "nums/numdata.hpp"
 extern void    setnumchanged(uint32_t tim);
+extern void toGarmin(int base);
 int savedoses(NovoPen *pen,uint32_t reftime,uint8_t *bytes,int len) {
     int type=pen->type;
     auto lasttime=pen->lasttime;
@@ -1568,6 +1670,8 @@ extern "C" JNIEXPORT jboolean  JNICALL   fromjava(oldnovopenvalue)(JNIEnv *env, 
     return pen->lasttime>dosetime;
     }
 extern "C" JNIEXPORT jint  JNICALL   fromjava(savenovopen)(JNIEnv *env, jclass cl,jlong referencetime,jstring jserial,jint type,jbyteArray jrawdoses,jboolean setlast) {
+   jint ret;
+   {
     NovoPen   *pen=getnovopen(env,jserial);
     if(!pen)  {
         return -1;
@@ -1584,9 +1688,11 @@ extern "C" JNIEXPORT jint  JNICALL   fromjava(savenovopen)(JNIEnv *env, jclass c
     destruct _dest([env,bytes,jrawdoses]() {
           env->ReleasePrimitiveArrayCritical(jrawdoses, bytes, JNI_ABORT);
         });
-    jint ret= savedoses(pen,referencetime,bytes,lens);
+    ret= savedoses(pen,referencetime,bytes,lens);
     if(setlast)
         pen->lasttime=time(nullptr);
+    }
+    toGarmin(0);
     return ret;
     }
 extern "C" JNIEXPORT void  JNICALL   fromjava(setnovopenttimeandtype)(JNIEnv *env, jclass cl,jlong time,jint type,jstring jserial) {
@@ -1688,6 +1794,8 @@ extern "C" JNIEXPORT jint  JNICALL   fromjava(getLibreCountry)(JNIEnv *env, jcla
     }
 extern "C" JNIEXPORT void  JNICALL   fromjava(setLibreCountry)(JNIEnv *env, jclass cl,int val) {
     settings->data()->librecountry=val+1;
+    settings->data()->libreinit=false;
+    //settings->data()->libreinit3=false;
     }
 
 
@@ -1882,15 +1990,8 @@ extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getDisconnectSensor)(JNIEnv *e
     }
 
 
-std::string_view getjstring(JNIEnv *env,jstring jstr)  {
-    size_t strlen= env->GetStringUTFLength( jstr);
-    jint jstrlen = env->GetStringLength( jstr);
-    char *strbuf=new char[strlen+1];
-    env->GetStringUTFRegion( jstr, 0,jstrlen, strbuf);
-    strbuf[strlen]='\0';
-    return {strbuf,strlen};
-    }
-extern "C" JNIEXPORT void JNICALL fromjava(setDevice) (JNIEnv *env, jclass clazz, jstring jMANUFACTURER, jstring jMODEL, int SDK_INTin) { 
+//extern "C" JNIEXPORT void JNICALL fromjava(setDevice) (JNIEnv *env, jclass clazz, jstring jMANUFACTURER, jstring jMODEL, int SDK_INTin) { 
+extern "C" JNIEXPORT void JNICALL fromjava(saveDevice) (JNIEnv *env, jclass clazz, jstring jMANUFACTURER, jstring jMODEL, jstring jPRODUCT,int SDK_INTin) { 
    if(settings->data()->initVersion<36) { 
     if(jMODEL) {
                 size_t strlen= env->GetStringUTFLength( jMODEL);
@@ -1904,8 +2005,34 @@ extern "C" JNIEXPORT void JNICALL fromjava(setDevice) (JNIEnv *env, jclass clazz
                         constexpr const char watch4[]{"R8"};
                         if(memcmp(watch4,strbuf+3,2)) { 
                                 LOGGER("MODEL %s Samsung not Watch4\n",strbuf);
-                                settings->data()->DisconnectSensor=true;
-                                return;
+                                if(!jPRODUCT) {
+                                     LOGAR("saveDevice jPRODUCT==null");
+                                     settings->data()->DisconnectSensor=true;
+                                     return;
+                                    }
+                                const int productlen= env->GetStringUTFLength(jPRODUCT);
+                                constexpr const char watch9[]{"fresh9"};
+                                constexpr const int watch9len=sizeof(watch9)-1;
+                                if(productlen<=watch9len) {
+                                     LOGAR("saveDevice Product name too small for watch9");
+                                     settings->data()->DisconnectSensor=true;
+                                     return;
+                                     }
+                                const char *PRODUCT = env->GetStringUTFChars( jPRODUCT, NULL);
+                                if(PRODUCT == nullptr)  {
+                                     settings->data()->DisconnectSensor=true;
+                                     LOGAR("saveDevice PRODUCT == null");
+                                     return;
+                                    }
+                                destruct   dest([jPRODUCT,PRODUCT,env]() {env->ReleaseStringUTFChars(jPRODUCT, PRODUCT);});
+
+                                if(memcmp(watch9,PRODUCT,sizeof(watch9)-1)) { 
+                                        LOGGER("MODEL %s Samsung not Watch9\n",strbuf);
+                                        settings->data()->DisconnectSensor=true;
+                                        return;
+                                        }
+                                else
+                                    LOGGER("MODEL %s Samsung Watch9\n",strbuf);
                                 }
                         else {
                                 LOGGER("MODEL %s Samsung Watch4\n",strbuf);
@@ -1917,7 +2044,6 @@ extern "C" JNIEXPORT void JNICALL fromjava(setDevice) (JNIEnv *env, jclass clazz
                }
         }
       }
-
 
 extern "C" JNIEXPORT void  JNICALL   fromjava(setdontuseclose)(JNIEnv *env, jclass cl,jboolean val) {
     settings->data()->dontuseclose=val;
@@ -2028,5 +2154,21 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(setalarmSoundType)(JNIEnv *env, jc
     }
 extern "C" JNIEXPORT jint  JNICALL   fromjava(getalarmSoundType)(JNIEnv *env, jclass cl) {
     return settings->data()->alarmSoundTypeget();
+    }
+
+
+extern "C" JNIEXPORT void  JNICALL   fromjava(setRotate)(JNIEnv *env, jclass cl,jboolean val) {
+    settings->data()->Rotate=val;
+    }
+extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getRotate)(JNIEnv *env, jclass cl) {
+    return settings->data()->Rotate;
+    }
+
+
+extern "C" JNIEXPORT void  JNICALL   fromjava(setRotateText)(JNIEnv *env, jclass cl,jboolean val) {
+    settings->data()->rotateText=val;
+    }
+extern "C" JNIEXPORT jboolean  JNICALL   fromjava(getRotateText)(JNIEnv *env, jclass cl) {
+    return settings->data()->rotateText;
     }
 

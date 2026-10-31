@@ -1,3 +1,4 @@
+#include "net/clarity/clarity.hpp"
 /*      This file is part of Juggluco, an Android app to receive and display         */
 /*      glucose values from Freestyle Libre 2 and 3 sensors.                         */
 /*                                                                                   */
@@ -25,6 +26,10 @@
 #include "datbackup.hpp"
 #include "net/netstuff.hpp"
 #include <string_view>
+#ifndef TESTMENU
+#include <mutex>
+extern std::mutex change_host_mutex;
+#endif
 extern jclass JNIString;
 extern jstring myNewStringUTF(JNIEnv *env,const std::string_view str);
 extern bool networkpresent;
@@ -32,6 +37,51 @@ extern bool networkpresent;
 extern "C" JNIEXPORT jboolean  JNICALL   fromjava(backuphasrestore)(JNIEnv *env, jclass cl) {
     return backup->getupdatedata()->hasrestore;
     }
+extern "C" JNIEXPORT jint JNICALL fromjava(getbackuptransport)(JNIEnv *,jclass,jint pos) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return passhost_t::transport_automatic;
+    return backup->getupdatedata()->allhosts[pos].gettransport();
+    }
+extern "C" JNIEXPORT jboolean JNICALL fromjava(getbackupside)(JNIEnv *,jclass,jint pos) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+    return backup->getupdatedata()->allhosts[pos].side;
+    }
+extern "C" JNIEXPORT jboolean JNICALL fromjava(getbackupbleclient)(JNIEnv *,jclass,jint pos) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+    return backup->getupdatedata()->allhosts[pos].bleclient;
+    }
+extern "C" JNIEXPORT jboolean JNICALL fromjava(getbackupblereverse)(JNIEnv *,jclass,jint pos) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+    return backup->getupdatedata()->allhosts[pos].blereverse;
+    }
+extern "C" JNIEXPORT jboolean JNICALL fromjava(getbackupbleunproven)(JNIEnv *,jclass,jint pos) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+    return backup->getupdatedata()->allhosts[pos].bleunproven;
+    }
+
+
+
+/**
+ * One-shot migration for mirror rows created before non-ICE side had a
+ * persistent meaning. The QR-created direction pairs used by Juggluco have
+ * complementary Scans settings, so sendscans is the stable r1/r2 discriminator.
+ *
+ * IMPORTANT: assigning side must never change a physical BLE role that has
+ * already proved itself. bleclient is the pre-migration persisted local role.
+ * After assigning side, derive the pair-wide direction bit from that existing
+ * role:
+ *
+ *   client = (!side) XOR blereverse
+ *   therefore blereverse = client == side
+ *
+ * This makes the migration role-preserving. For example, an r1 connection
+ * that was already a proven GATT server becomes side=r1, blereverse=true and
+ * remains a server instead of being reset to the nominal r1-client direction.
+ */
 extern "C" JNIEXPORT jint  JNICALL   fromjava(backuphostNr)(JNIEnv *env, jclass cl) {
     return backup->    gethostnr();
     }
@@ -92,7 +142,7 @@ extern "C" JNIEXPORT jstring JNICALL   fromjava(getbackuphostname)(JNIEnv *envin
     */
 
 
-int getposbylabel(const char *label) {
+static int getposbylabel(const char *label) {
     const int nr=backup->gethostnr();
     for(int pos=0;pos<nr;++pos) {
         const passhost_t &host=backup->getupdatedata()->allhosts[pos];
@@ -106,7 +156,7 @@ int getposbylabel(const char *label) {
     LOGGER("getposbylabel(%s)=-1\n",label);
     return -1;
     }
-bool removebylabel(const char *label) {
+static bool removebylabel(const char *label) {
     int pos = getposbylabel(label);
     if (pos < 0)
         return false;
@@ -122,28 +172,33 @@ extern "C" JNIEXPORT jboolean JNICALL   fromjava(removebylabel)(JNIEnv *env, jcl
     } */
 
 #ifndef ABBOTT
-passhost_t * getwearoshost(const bool create,const char *label,bool,bool=false);
-bool resetbylabel(const char *label,bool galaxy) {
-    
+
+passhost_t * getwearoshost(const bool create,const char *label,bool,bool=false,bool=false);
+   
+static bool resetbylabel(const char *label,bool galaxy) {
     int pos=getposbylabel(label);
     if(pos<0)
         return false;
+
     const passhost_t &host=backup->getupdatedata()->allhosts[pos];
     const int nr=host.nr;
-    if(nr>0) {
-        struct sockaddr_in6 ips[passhost_t::maxip];
+
+    struct sockaddr_in6 ips[passhost_t::maxip];
+    if(nr>0)
         memcpy(ips,host.ips,sizeof(ips));
 
-        passhost_t *newhost=getwearoshost(true,label,galaxy,true);
+    passhost_t *newhost=getwearoshost(true,label,galaxy,true);
+    if(!newhost)
+        return false;
+
+    if(nr>0) {
         memcpy(newhost->ips,ips,sizeof(ips));
         newhost->nr=std::min(nr,passhost_t::maxip);
         }
-    else {
-        backup->deletehost(pos);
-        }
+
     return true;
     }
-    
+   
 extern "C" JNIEXPORT jboolean JNICALL   fromjava(resetbylabel)(JNIEnv *env, jclass cl,jstring jlabel,jboolean galaxy) {
     const char *label = env->GetStringUTFChars( jlabel, NULL);
     if(!label) return false;
@@ -152,7 +207,7 @@ extern "C" JNIEXPORT jboolean JNICALL   fromjava(resetbylabel)(JNIEnv *env, jcla
     return resetbylabel(label,galaxy);
     }
 #endif
-const char *gethostlabel(int pos) {
+static const char *gethostlabel(int pos) {
     if(!backup||pos<0||pos>=backup->gethostnr())
         return nullptr;
     const passhost_t &host=backup->getupdatedata()->allhosts[pos];
@@ -160,7 +215,7 @@ const char *gethostlabel(int pos) {
         return nullptr;
     return host.getname();
     }
-bool gethosttestip(int pos) {
+static bool gethosttestip(int pos) {
     if(!backup||pos>=backup->gethostnr())
         return true;
     const passhost_t &host=backup->getupdatedata()->allhosts[pos];
@@ -260,6 +315,7 @@ extern "C" JNIEXPORT void JNICALL   fromjava(setreceiveport)(JNIEnv *env, jclass
         char newport[portlen+1];
         jint jlen = env->GetStringLength( jport);
          env->GetStringUTFRegion( jport, 0,jlen, newport); 
+        LOGGER("setreceiveport %s\n",newport);
         if(backup->getupdatedata()->port[portlen]||memcmp(newport, backup->getupdatedata()->port,portlen)) {
             memcpy(backup->getupdatedata()->port,newport,portlen);
             backup->getupdatedata()->port[portlen]='\0';
@@ -300,11 +356,7 @@ extern "C" JNIEXPORT jboolean JNICALL   fromjava(stringarray)(JNIEnv *env, jclas
 //extern "C" JNIEXPORT jint JNICALL   fromjava(changebackuphost)(JNIEnv *env, jclass cl,jint pos,jobjectArray jnames,jint nr,jboolean detect,jstring jport,jboolean nums,jboolean stream,jboolean scans,jboolean recover,jboolean receive,jboolean reconnect,jboolean accepts,jstring jpass,jlong starttime) {
 //extern bool mkwearos;
 
-#ifndef TESTMENU
-#include <mutex>
-extern std::mutex change_host_mutex;
-#endif
-extern "C" JNIEXPORT jint JNICALL   fromjava(changebackuphost)(JNIEnv *env, jclass cl,jint pos,jobjectArray jnames,jint nr,jboolean detect,jstring jport,jboolean nums,jboolean stream,jboolean scans,jboolean recover,jboolean receive,jboolean activeonly,jboolean passiveonly,jstring jpass,jlong starttime,jstring jlabel,jboolean testip,jboolean hashostname,jstring jICElabel,jboolean side) {
+extern "C" JNIEXPORT jint JNICALL   fromjava(changebackuphost)(JNIEnv *env, jclass cl,jint pos,jobjectArray jnames,jint nr,jboolean detect,jstring jport,jboolean nums,jboolean stream,jboolean scans,jboolean recover,jboolean receive,jboolean activeonly,jboolean passiveonly,jstring jpass,jlong starttime,jstring jlabel,jboolean testip,jboolean hashostname,jstring jICElabel,jboolean side,jint transport,jboolean bleclient) {
 #ifndef TESTMENU
     LOGAR("changebackuphost const std::lock_guard<std::mutex> lock(change_host_mutex)");
   const std::lock_guard<std::mutex> lock(change_host_mutex);
@@ -322,7 +374,8 @@ LOGGER("changebackuphost(%d,%p,%d,%d,%p,%d,%d,%d,%d%,%d,%d,%d,%p,%ld,%p,%d,%d)\n
      jint res;
      if(jICElabel) {
         const char *ICElabel=env->GetStringUTFChars( jICElabel, NULL);
-        res=backup->changeICEhost(ICElabel,pos,nums,stream,scans,receive,std::string_view(passptr,passlen),starttime,label,side,true);
+        res=backup->changeICEhost(ICElabel,pos,nums,stream,scans,receive,
+                std::string_view(passptr,passlen),starttime,label,side,true,transport,bleclient);
         env->ReleaseStringUTFChars(jICElabel, ICElabel);
         }
      else {
@@ -331,11 +384,139 @@ LOGGER("changebackuphost(%d,%p,%d,%d,%p,%d,%d,%d,%d%,%d,%d,%d,%p,%ld,%p,%d,%d)\n
         char port[portlen+1]; 
         env->GetStringUTFRegion( jport, 0,jlen, port); port[portlen]='\0';
         const int arlen=jnames?std::min(env->GetArrayLength(jnames),nr):0;
-        res=backup->changehost(pos,env,jnames,arlen,detect,std::string_view(port,portlen),nums,stream,scans,recover,receive,activeonly,std::string_view(passptr,passlen),starttime,passiveonly,label,testip,true,hashostname);
+        res=backup->changehost(pos,env,jnames,arlen,detect,std::string_view(port,portlen),nums,stream,scans,recover,receive,activeonly,std::string_view(passptr,passlen),starttime,passiveonly,label,testip,true,hashostname,transport,bleclient);
+        if(res>=0&&res<backup->gethostnr()) {
+            // For ordinary mirrors side is immutable pair identity. New QR
+            // peers explicitly receive the opposite bit; editing a row passes
+            // its existing side unchanged.
+            auto &savedhost=backup->getupdatedata()->allhosts[res];
+            savedhost.side=side;
+            // Rows which predate this bit have zero in the formerly-reserved
+            // position and are intentionally treated as proven. Only a newly
+            // created nearby mirror is allowed to experiment with physical BLE
+            // direction until its first authenticated session succeeds.
+            if(pos<0)
+                savedhost.bleunproven=true;
+            LOGGER("changebackuphost saved side=%d bleunproven=%d for %s(%d)\n",side,
+                    savedhost.bleunproven,savedhost.getnameif(),res);
+            }
         }
     if(jlabel)
         env->ReleaseStringUTFChars(jlabel, label);
     return res;
+    }
+
+extern "C" JNIEXPORT jboolean JNICALL fromjava(setbackupblereverse)(JNIEnv *,jclass,jint pos,jboolean reverse) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+#ifndef TESTMENU
+    const std::lock_guard<std::mutex> lock(change_host_mutex);
+#endif
+    if(pos>=backup->gethostnr())
+        return false;
+    auto &host=backup->getupdatedata()->allhosts[pos];
+    const bool value=reverse;
+    if(host.blereverse!=value) {
+        LOGGER("setbackupblereverse pair direction %s(%d): %d -> %d\n",
+                host.getnameif(),pos,host.blereverse,value);
+        host.blereverse=value;
+        }
+    return true;
+    }
+
+extern "C" JNIEXPORT jboolean JNICALL fromjava(setbackupbleunproven)(JNIEnv *,jclass,jint pos,jboolean unproven) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+#ifndef TESTMENU
+    const std::lock_guard<std::mutex> lock(change_host_mutex);
+#endif
+    if(pos>=backup->gethostnr())
+        return false;
+    auto &host=backup->getupdatedata()->allhosts[pos];
+    const bool value=unproven;
+    if(host.bleunproven!=value) {
+        LOGGER("setbackupbleunproven %s(%d): %d -> %d\n",
+                host.getnameif(),pos,host.bleunproven,value);
+        host.bleunproven=value;
+        }
+    return true;
+    }
+
+extern "C" JNIEXPORT jboolean JNICALL fromjava(setbackupbleclient)(JNIEnv *,jclass,jint pos,jboolean bleclient) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+#ifndef TESTMENU
+    const std::lock_guard<std::mutex> lock(change_host_mutex);
+#endif
+    if(pos>=backup->gethostnr())
+        return false;
+    auto &host=backup->getupdatedata()->allhosts[pos];
+    const bool client=bleclient;
+    if(host.bleclient!=client) {
+        LOGGER("setbackupbleclient preferred role %s(%d): %d -> %d\n",
+                host.getnameif(),pos,host.bleclient,client);
+        host.bleclient=client;
+        }
+    return true;
+    }
+
+extern void applyConfiguredMirrorTransports();
+extern "C" JNIEXPORT jboolean JNICALL fromjava(setMirrorTransport)(JNIEnv *env,jclass,jstring jlabel,jint transport,jboolean bleclient) {
+    if(!backup||!jlabel||transport<passhost_t::transport_automatic||
+            transport>passhost_t::transport_bluetooth)
+        return false;
+    const char *label=env->GetStringUTFChars(jlabel,nullptr);
+    if(!label)
+        return false;
+    int pos=-1;
+    {
+#ifndef TESTMENU
+        const std::lock_guard<std::mutex> lock(change_host_mutex);
+#endif
+        pos=getposbylabel(label);
+        if(pos>=0) {
+            if(transport==passhost_t::transport_bluetooth) {
+                for(int i=0;i<backup->gethostnr();++i) {
+                    const auto &other=backup->getupdatedata()->allhosts[i];
+                    if(i!=pos&&!other.deactivated&&other.gettransport()==passhost_t::transport_bluetooth) {
+                        pos=-1;
+                        break;
+                        }
+                    }
+                }
+            if(pos>=0) {
+                auto &host=backup->getupdatedata()->allhosts[pos];
+                const int oldtransport=host.gettransport();
+                host.settransport(transport);
+                host.bleclient=bleclient;
+                // /mirrortransport is received through the Wear data layer,
+                // so this existing QR-created entry is the Wear peer rather
+                // than a second mirror that should be auto-created by netinfo.
+                host.wearos=true;
+                LOGGER("setMirrorTransport saved %s(%d): transport=%d bleclient=%d\n",
+                        host.getnameif(),pos,host.gettransport(),host.bleclient);
+                if(oldtransport!=transport) {
+                    LOGGER("setMirrorTransport %s(%d): %d -> %d, closing old carrier sockets\n",
+                            host.getnameif(),pos,oldtransport,transport);
+                    backup->closesocksone(pos);
+                    }
+                }
+            }
+    }
+    env->ReleaseStringUTFChars(jlabel,label);
+    if(pos>=0)
+        applyConfiguredMirrorTransports();
+    return pos>=0;
+    }
+extern "C" JNIEXPORT void JNICALL fromjava(setMirrorWearOS)(JNIEnv *,jclass,jint index) {
+    if(!backup||index<0||index>=backup->gethostnr())
+        return;
+#ifndef TESTMENU
+    const std::lock_guard<std::mutex> lock(change_host_mutex);
+#endif
+    auto &host=backup->getupdatedata()->allhosts[index];
+    host.wearos=true;
+    LOGGER("setMirrorWearOS %s(%d)\n",host.getnameif(),index);
     }
 extern "C" JNIEXPORT jboolean JNICALL   fromjava(isreceiving)(JNIEnv *env, jclass cl) {
     return backup->isreceiving() ;
@@ -379,6 +560,7 @@ extern "C" JNIEXPORT void JNICALL   fromjava(networkpresent)(JNIEnv *env, jclass
     wakeuploader();
 #if !defined(WEAROS) && !defined(TESTMENU)
      wakeaftermin(0) ;
+     wakeclarity();
 #endif
     LOGAR("end networkpresend");
     }
@@ -391,7 +573,9 @@ extern "C" JNIEXPORT void JNICALL   fromjava(switchSync)(JNIEnv *env, jclass cl)
     }
 
 //void wakebackup(myuintptr_t kind=wakeall,bool sendwake=false){
-void resetnetwork() {
+extern void resetnetwork();
+
+static void resetnetworkthread(bool *useresetnetwork) {
     LOGSTRING("resetnetwork\n");
     if(backup) {
         backup->closeallsocks();
@@ -399,9 +583,26 @@ void resetnetwork() {
         networkpresent=true;
         backup->notupdatedsettings();
         }
+    *useresetnetwork=true;
+    }
+extern void resetnetwork();
+void resetnetwork() {
+    static bool useresetnetwork=true;
+    if(useresetnetwork) {
+        useresetnetwork=false;
+        std::thread th(resetnetworkthread,&useresetnetwork);
+        th.detach();
+        }
     }
 extern "C" JNIEXPORT void JNICALL   fromjava(resetnetwork)(JNIEnv *env, jclass cl) {
     resetnetwork();
+    }
+
+extern bool probeMirrorTcp(passhost_t *pass,int timeoutMillis);
+extern "C" JNIEXPORT jboolean JNICALL fromjava(probeMirrorTcp)(JNIEnv *,jclass,jint pos) {
+    if(!backup||pos<0||pos>=backup->gethostnr())
+        return false;
+    return probeMirrorTcp(&getBackupHosts()[pos],3000);
     }
 
 extern "C" JNIEXPORT void JNICALL   fromjava(networkabsent)(JNIEnv *env, jclass cl) {

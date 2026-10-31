@@ -14,7 +14,7 @@ constexpr static std::string_view labels[]={"糖質",
 // 出典: 七訂日本食品標準成分表 (2015) の値を概数化。
 // あいまいな食品 (乾麺/茹で麺の差が大きいうどん・そば・パスタ等) は除外し、
 // 提供形態が一定で炭水化物量が比較的安定している食品のみを採用しています。
-// プリン → カスタードプリン特定; ご飯 = 炊いた白米 (米/精白米とは別)。
+// プリン -> カスタードプリン特定; ご飯 = 炊いた白米 (米/精白米とは別)。
 constexpr static Shortcut_t  shortinit[]= { {"食パン",
         .47f},          // 食パン (slice bread)
         {"ご飯",
@@ -103,12 +103,12 @@ const jugglucotext jatext {
 	.duration="期間: %.1f 日",
 	.timeactive="稼働時間の割合: %.1f%%",
 	.nrmeasurement="測定数: %d",
-	.EstimatedA1C="推定A1C: %.1f%% (%d mmol/mol)",
+	.EstimatedA1C="uGMI ≈ 推定A1C: %.1f%% (%d mmol/mol)",
 	.GMI="血糖管理指標: %.1f%% (%d mmol/mol)",
 	.SD="標準偏差: %.2f",
 	.glucose_variability="血糖変動: %.1f%%",
      .menustr0={
-		"システムUI",
+		"ChatGPT",
 		"メニュー",
 		"ウォッチ",
 		"センサー",
@@ -136,7 +136,7 @@ const jugglucotext jatext {
 		"音声",
 		"フロート"
 		},
-	.menustr2= {"最終スキャン",
+	.menustr2= {"システムUI",
 	"スキャン",
 	"ストリーム",
 	"履歴",
@@ -187,7 +187,7 @@ jatext.amount},
 .libre3scanerror={"FreeStyle Libre 3 スキャンエラー", 
 	"再試行してください"},
 .libre3wrongID={"エラー: アカウントIDが間違っています",
-	R"(センサー起動時と同じIDである必要があります。左メニュー→設定→データ交換→Libreview→「アカウントIDを取得」でLibreviewから取得してください。)"},
+	R"(センサー起動時と同じIDである必要があります。左メニュー->設定->データ交換->Libreview->「アカウントIDを取得」でLibreviewから取得してください。)"},
 .libre3scansuccess= {"FreeStyle Libre 3 センサー", 
 	"以後、JugglucoがLibre 3センサーから血糖値を受信します"},
 .unknownNFC={"NFCスキャンが認識できませんでした", 
@@ -195,7 +195,7 @@ jatext.amount},
 .nolibre3={"FreeStyle Libre 3 センサー",
 	"https://www.juggluco.nl/download.html から正しいバージョンをダウンロードしてください"},
 .libre3zeroID={"エラー: アカウントIDが0です",
-	R"(左メニュー→設定→データ交換→Libreview→「アカウントIDを取得」を使用して0以外のアカウントIDを設定してください。)"},
+	R"(左メニュー->設定->データ交換->Libreview->「アカウントIDを取得」を使用して0以外のアカウントIDを設定してください。)"},
 .needsandroid8="Android 8 以上が必要です"sv,
 #ifndef WEAROS
 	.advancedstart= R"(<h1>改造済みデバイス</h1>

@@ -331,7 +331,9 @@ private static class ReselectSpinner extends Spinner {
         radiusSeekBar.setMax(25);
         radiusSeekBar.setProgress(currentRadius);
         int width= GlucoseCurve.getwidth();
-        radiusSeekBar.setMinimumWidth((int)(width*.25f));
+        int height= GlucoseCurve.getheight();
+        int largest=Math.max(width,height);
+        radiusSeekBar.setMinimumWidth((int)(largest*.25f));
 
 
         var shapelabel=getlabel(context,R.string.buttonshape);
@@ -359,6 +361,7 @@ private static class ReselectSpinner extends Spinner {
         var root=new Layout(context,new View[]{themeName},new View[]{themesLabel,lightSpinner,darkSpinner},new View[]{shapelabel,rectButton,ovalButton},new View[]{radiusLabel,radiusSeekBar});
 
         root.setPadding(p12, p12, p12, p8);
+        root.systembarMargins();
 
         AdapterView.OnItemSelectedListener lightListener = new AdapterView.OnItemSelectedListener() {
                 @Override
@@ -562,27 +565,63 @@ private static class ReselectSpinner extends Spinner {
                 Color.BLACK
         );
 
+        int disabledControlAttr = themeContext.getResources().getIdentifier(
+                "colorDisabledControl", "attr", themeContext.getPackageName());
+        int disabledTextAttr = themeContext.getResources().getIdentifier(
+                "colorDisabledText", "attr", themeContext.getPackageName());
+
+        int disabledControl = DynamicThemeUtils.resolveAttributeColor(
+                themeContext, disabledControlAttr, normal);
+        int disabledText = DynamicThemeUtils.resolveAttributeColor(
+                themeContext, disabledTextAttr, textColor);
+
         ColorStateList compoundTint = new ColorStateList(
                 new int[][] {
-                        new int[] { android.R.attr.state_checked },
                         new int[] { -android.R.attr.state_enabled },
+                        new int[] { android.R.attr.state_checked },
                         new int[] {}
                 },
                 new int[] {
+                        disabledControl,
                         activated,
-                        normal,
                         normal
                 }
         );
+
+        ColorStateList compoundText = new ColorStateList(
+                new int[][] {
+                        new int[] { -android.R.attr.state_enabled },
+                        new int[] {}
+                },
+                new int[] { disabledText, textColor }
+        );
+
+        rectButton.setTextColor(compoundText);
+        ovalButton.setTextColor(compoundText);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             rectButton.setButtonTintList(compoundTint);
             ovalButton.setButtonTintList(compoundTint);
 
-            seekBar.setProgressTintList(ColorStateList.valueOf(activated));
-            seekBar.setProgressBackgroundTintList(ColorStateList.valueOf(normal));
-            seekBar.setThumbTintList(ColorStateList.valueOf(activated));
-            seekBar.setSecondaryProgressTintList(ColorStateList.valueOf(normal));
+            ColorStateList seekActivatedTint = new ColorStateList(
+                    new int[][] {
+                            new int[] {-android.R.attr.state_enabled},
+                            new int[] {}
+                    },
+                    new int[] {disabledControl, activated}
+            );
+            ColorStateList seekNormalTint = new ColorStateList(
+                    new int[][] {
+                            new int[] {-android.R.attr.state_enabled},
+                            new int[] {}
+                    },
+                    new int[] {disabledControl, normal}
+            );
+
+            seekBar.setProgressTintList(seekActivatedTint);
+            seekBar.setProgressBackgroundTintList(seekNormalTint);
+            seekBar.setThumbTintList(seekActivatedTint);
+            seekBar.setSecondaryProgressTintList(seekNormalTint);
 
             // Do not tint the native spinner shell with textColor. When AndroidDefault
             // is the active app theme, that can leave the closed/unselected spinner
@@ -678,7 +717,17 @@ private static void styleSpinnerShell(Context themeContext, Spinner spinner) {
 
         int textAttrId = themeContext.getResources().getIdentifier("colorButtonText", "attr", pkg);
         int btnTextColor = DynamicThemeUtils.resolveAttributeColor(themeContext, textAttrId, Color.WHITE);
-        button.setTextColor(btnTextColor);
+        int disabledTextAttr = themeContext.getResources().getIdentifier(
+                "colorDisabledText", "attr", pkg);
+        int disabledTextColor = DynamicThemeUtils.resolveAttributeColor(
+                themeContext, disabledTextAttr, btnTextColor);
+        button.setTextColor(new ColorStateList(
+                new int[][] {
+                        new int[] {-android.R.attr.state_enabled},
+                        new int[] {}
+                },
+                new int[] {disabledTextColor, btnTextColor}
+        ));
     }
 
     private static void applySelectedTheme(MainActivity act) {
@@ -726,8 +775,16 @@ private static void styleSpinnerShell(Context themeContext, Spinner spinner) {
     public static void show(MainActivity act,View parent) {
         EnableControls(parent,false);
         int height= GlucoseCurve.getheight();
+        int width= GlucoseCurve.getwidth();
+        int smallest=Math.min(height,width);
         var layout = createThemeConfigurationPanel(act,parent);
-        var params = new FrameLayout.LayoutParams( WRAP_CONTENT, (int)(height*.8f), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
+        var params = new FrameLayout.LayoutParams( WRAP_CONTENT,(int)(smallest*.8f), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
+        /*
+        var params = new FrameLayout.LayoutParams( WRAP_CONTENT,MATCH_PARENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP);
+        float density = act.getResources().getDisplayMetrics().density;
+        params.bottomMargin=(int)(density*150.0f);
+        */
+
 
     //    var params = new FrameLayout.LayoutParams( (int)(width*.5f), WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP);
 

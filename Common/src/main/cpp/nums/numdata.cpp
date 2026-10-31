@@ -20,12 +20,97 @@
 
 
 #include "nums/numdata.hpp"
+#include "nums/mirrordatabase.hpp"
 #include <vector>
 std::vector<Numdata*> numdatas;
 
 #include "net/passhost.hpp"
 #include "net/makerandom.hpp"
 #include "net/Connect.hpp"
+#include "activity/mirror.hpp"
+namespace ja=juggluco::activity;
+
+// Bind exact mirrored signatures to this clone's databases. Copied numeric
+// indices alone never own an activity, and ordinary Amounts are not scanned.
+void bindMirroredActivityAmounts(ja::Store &store) {
+   if(!store.header().receivedMirror)return;
+   struct Database {Numdata *data;uint32_t base;int64_t identity;};
+   std::vector<Database> databases;
+   for(auto *data:numdatas)databases.push_back({data,uint32_t(data->getindex()),data->getnewident()});
+   for(uint32_t i=1;i<=store.header().count;++i) {
+      const auto *owner=store.get(i);
+      const auto saved=store.view<ja::AmountBinding>(owner->amountBinding);
+      if(saved.size()!=1||saved[0].number.mealptr!=(Num::sportbit|i))continue;
+      const auto binding=saved[0];bool found=false;
+      for(bool preferred:{true,false}) {
+         for(const auto &database:databases)if((database.base==binding.base)==preferred) {
+            std::lock_guard lock(database.data->nummutex);
+            for(auto *number=database.data->firstnotless(binding.number.time);
+                  number<database.data->end()&&number->time==binding.number.time;++number) {
+               if(database.data->valid(number)&&number->type!=settings->data()->bloodvar&&
+                     !memcmp(number,&binding.number,sizeof(Num))) {
+                  // Database identity is local bookkeeping, not a new activity
+                  // revision. Rebasing in place avoids ever-growing bindings and
+                  // metadata echo loops between mirrors that send both ways.
+                  auto *local=const_cast<ja::AmountBinding*>(saved.data());
+                  local->base=database.base;local->database=database.identity;
+                  found=true;break;
+               }
+            }
+            if(found)break;
+         }
+         if(found)break;
+      }
+   }
+}
+bool receiveActivityMirror(const uint8_t *data,size_t length) {
+   try {
+      auto &store=ja::globalStore();std::lock_guard lock(store.mutex);
+      ja::mirror::receive(store,{reinterpret_cast<const std::byte*>(data),length});
+      bindMirroredActivityAmounts(store);
+      setnumchanged();if(backup)backup->wakebackup(wakenums);
+      LOGGER("Activity: received mirrored records=%u\n",store.header().count);
+      return true;
+   } catch(const std::exception &error) {LOGGER("Activity mirror receive: %s\n",error.what());return false;}
+}
+int updateactivities(crypt_t *pass,Connect *connect,changednums &numbers) {
+   const auto cursor=numbers.activityState;
+   try {
+      ja::mirror::Transfer transfer;
+      {
+         auto &store=ja::globalStore();std::lock_guard lock(store.mutex);
+         if(ja::mirror::unchanged(store,cursor))return 2;
+         transfer=ja::mirror::capture(store,cursor);
+      } // Release the activity mutex before waiting on the network.
+      static_assert(ja::mirror::maxBytes==ja::mirror::maxChunkTransfer);
+      if(!connect->activityChunkSupport) {
+         const std::vector<subdata> data={{reinterpret_cast<const uint8_t*>(transfer.bytes.data()),0,int(transfer.bytes.size())}};
+         if(!connect->senddata(pass,data,ja::mirror::filename)) {
+            numbers.activityState={};return 0;
+         }
+      }
+      else
+      for(size_t offset=0;offset<transfer.bytes.size();) {
+         const size_t length=std::min(connect->activityChunkBytes,transfer.bytes.size()-offset);
+         std::vector<uint8_t> packet(sizeof(activitychunk_t)+length);
+         auto *chunk=reinterpret_cast<activitychunk_t*>(packet.data());
+         *chunk=activitychunk_t{.totlen=uint32_t(packet.size()),.size=uint32_t(transfer.bytes.size()),.offset=uint32_t(offset)};
+         memcpy(chunk->data,transfer.bytes.data()+offset,length);
+         if(!connect->sendcommand(pass,packet.data(),packet.size())) {
+            // Incomplete chunks have not changed the receiver's activity store.
+            // Retain the acknowledged base so a transport failure retries the
+            // delta instead of retransmitting the whole activity history.
+            if(offset+length==transfer.bytes.size())numbers.activityState={};
+            return 0;
+         }
+         offset+=length;
+      }
+      numbers.activityState=transfer.cursor;
+      LOGGER("Activity: mirrored %zu bytes\n",transfer.bytes.size());return 1;
+   } catch(const std::exception &error) {
+      LOGGER("Activity mirror send: %s\n",error.what());return 0;
+   }
+}
 extern void makenightswitch();
 void prunenums() {
     for(auto *num:numdatas) {
@@ -34,30 +119,31 @@ void prunenums() {
     }
 void makenightswitch() {
   LOGAR("makenightswitch");
-   if(settings->data()->initVersion<28) {
-      if(settings->data()->initVersion<26) {
-         if(settings->data()->initVersion<25) {
-            if(settings->data()->initVersion<24) {
-               if(settings->data()->initVersion<23) {
-      //            LOGAR("makenightswitch");
-                  settings->data()->postTreatments=false;
-                  for(auto *num:numdatas) {
-                     num->getnightSwitch() =num->getlastpos();
-                     }
-                  }
-               makerandom(&settings->data()->jugglucoID,sizeof(settings->data()->jugglucoID));
-               for(auto *num:numdatas) {
-                  num->getnightIDstart() =num->getlastpos();
-                  }
+       if(settings->data()->initVersion<28) {
+          if(settings->data()->initVersion<26) {
+             if(settings->data()->initVersion<25) {
+                if(settings->data()->initVersion<24) {
+                   if(settings->data()->initVersion<23) {
+          //            LOGAR("makenightswitch");
+                      settings->data()->postTreatments=false;
+                      for(auto *num:numdatas) {
+                         num->getnightSwitch() =num->getlastpos();
+                         }
+                      }
+                   makerandom(&settings->data()->jugglucoID,sizeof(settings->data()->jugglucoID));
+                   for(auto *num:numdatas) {
+                      num->getnightIDstart() =num->getlastpos();
+                      }
 
-               }
-              }
-//           settings->data()->threshold=0.8f;
+                   }
+                  }
+    //           settings->data()->threshold=0.8f;
+                }
+           extern         void resensordata(int sensorindex);
+            resensordata(0);
+    //     settings->data()->initVersion=28;
             }
-       extern         void resensordata(int sensorindex);
-        resensordata(0);
-//     settings->data()->initVersion=28;
-        }
+
      //prunenums();
 #if !defined(NOLOG) && defined( __ANDROID_API__)
 extern void checker();
@@ -73,10 +159,10 @@ int updatenums(crypt_t*pass,Connect *connect,struct changednums *nums,int ind) {
       else
          return 0;
       }
-   if(int did=meals->datameal()->updatemeal(pass,connect,nums[1].lastmeal)) {
-      return ret|did;
-      }
-   return 0;
+   const int mealsSent=meals->datameal()->updatemeal(pass,connect,nums[1].lastmeal);
+   if(!mealsSent)return 0;
+   const int activitiesSent=updateactivities(pass,connect,nums[1]);
+   return activitiesSent?ret|mealsSent|activitiesSent:0;
    }
    /*
 void remakenums() {
@@ -93,22 +179,25 @@ bool happened(uint32_t stime,int type,float value)  {
 
 
 bool receivelastpos(const lastpos_t *data) {
-   if(numdatas.size()<2)
-      return false;
-  const int base=data->dbase;
-   numdatas[base]-> receivelastpos(base,data->lastpos);
-   return true;
+   auto *database=mirrornums::database(numdatas,data->dbase);
+   if(!database||data->lastpos>INT_MAX)return false;
+   const int base=data->dbase;
+   return database->receivelastpos(base,data->lastpos);
    }
 
 bool backupnums(const struct numsend* innums) { 
-   if(numdatas.size()<2)
-      return false;
-   return numdatas[innums->dbase]->backupnums(innums);
+   auto *database=mirrornums::database(numdatas,innums->dbase);
+   if(!database||!database->backupnums(innums))return false;
+   // Activity metadata can arrive before or after a changed Amount packet.
+   if(access((std::string(globalbasedir)+"/activities.dat").c_str(),F_OK)==0) {
+      try {auto &store=ja::globalStore();std::lock_guard lock(store.mutex);bindMirroredActivityAmounts(store);}
+      catch(const std::exception &error){LOGGER("Activity mirror bindings: %s\n",error.what());}
+   }
+   return true;
    }
 bool backupnuminit(const numinit *numst) {
-   if(numdatas.size()<2)
-      return false;
-   return numdatas[(bool)(numst->ident)]->numbackupinit(numst);
+   auto *database=mirrornums::database(numdatas,bool(numst->ident));
+   return database&&database->numbackupinit(numst);
    }
 
 bool numsbackupsendinit(crypt_t*pass,Connect *connect,struct changednums *nuall,uint32_t starttime) {
@@ -119,9 +208,9 @@ bool numsbackupsendinit(crypt_t*pass,Connect *connect,struct changednums *nuall,
    return true;
    }
 int sendlastnum(const int dbase) {
-   if(dbase>=numdatas.size())
-      return -1;
-   return numdatas[dbase]->getlastpos();
+   auto *database=mirrornums::database(numdatas,dbase);
+   if(!database)return -1;
+   return database->mirrorRepairPending()?0:database->getlastpos();
    }
 
 uint32_t getnumlasttime() {

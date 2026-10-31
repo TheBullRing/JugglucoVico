@@ -94,12 +94,12 @@ jugglucotext pltext {
 	.duration="Okres aktywności: %.1f dni",
 	.timeactive="%.1f%% czasu aktywności",
 	.nrmeasurement="Liczba pomiarów: %d",
-	.EstimatedA1C="Szacowana wartość HbA1C: %.1f%% (%d mmol/mol)",
+	.EstimatedA1C="uGMI ≈ Szacowana wartość HbA1C: %.1f%% (%d mmol/mol)",
 	.GMI="Wskaźnik zarządzania poziomem glukozy (GMI): %.1f%% (%d mmol/mol)",
 	.SD="Odchylenie standardowe: %.2f",
 	.glucose_variability="Zmienność stęż. glukozy: %.1f%%",
      .menustr0={
-		"Integr. z sys.",
+		"ChatGPT",
 		"Całe menu",
 		"Zegarek",
 		"Sensor",
@@ -127,7 +127,7 @@ jugglucotext pltext {
 		"Na głos",
 		"Pływ. wart."
 		},
-	.menustr2= {"Ostatni odczyt",
+	.menustr2= {"Integr. z sys.",
 	"Skany",
 	"Strumień",
 	"Historia",

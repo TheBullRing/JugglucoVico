@@ -59,18 +59,26 @@ static private void askdays(MainActivity act,boolean history) {
    days.setMinEms(4);
    days.setText(""+Natives.getAnalysedays());
    Layout layout = new Layout(act, (l, w, h) -> {
-      int wid = GlucoseCurve.getwidth();
+        var geo=act.getWindowSize();
+        int wid=geo.x;
       if(!smallScreen) {
-         int hei = GlucoseCurve.getheight();
+        int hei=geo.y;
          if(hei>h&&wid>w) {
-                int half= wid / 2;
+             if(GlucoseCurve.isLandscape(act)) {
+                int half=wid/2;
                 int af=(half-w)/4;
-             l.setX(half - w-af);
-             l.setY((hei - h) / 2);
+                l.setX(half-w-af);
+                l.setY((int)((hei-h)*.65f));
+                }
+             else {
+                int availableWidth=wid-MainActivity.systembarLeft-MainActivity.systembarRight;
+                l.setX(MainActivity.systembarLeft+Math.max(0,(availableWidth-w)/2));
+                l.setY(Math.max(MainActivity.systembarTop,(hei-h)/2));
+                }
              }
             else {
-             l.setX(0);
-             l.setY(0);
+             l.setX(MainActivity.systembarLeft);
+             l.setY(MainActivity.systembarTop);
                }
             }
       else {
@@ -81,16 +89,30 @@ static private void askdays(MainActivity act,boolean history) {
       },new View[]{label,days},new View[]{Cancel,Ok});
         layout.setPadding(pad,pad,pad,pad);
    act.addMyContentView(layout,new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-     layout.post(layout::requestLayout);
-        layout.setBackgroundResource(R.drawable.dialogbackground);
+//     layout.post(layout::requestLayout);
+   // The dialog's position is calculated during onMeasure. Recalculate it
+   // after the window has acquired its new dimensions on rotation.
+   /*
+   View content=act.findViewById(android.R.id.content);
+   
+   View.OnLayoutChangeListener resize=(v,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom)-> {
+      if(right-left!=oldRight-oldLeft || bottom-top!=oldBottom-oldTop)
+         layout.post(layout::requestLayout);
+      };
+   if(content!=null)
+      content.addOnLayoutChangeListener(resize);
+
+      */
+   layout.setBackgroundResource(R.drawable.dialogbackground);
    days.requestFocus();
    if(!smallScreen) {
-      act.curve.numberview.showkeyboard(act);
+      act.curve.numberview.showkeyboard(act,layout);
       }
    else  {
       help.showkeyboard(act,days);
       }
 final Runnable closeonback=()-> {
+//      if(content!=null) content.removeOnLayoutChangeListener(resize);
       removeContentView(layout);
       if(smallScreen) {
          help.hidekeyboard(act);
@@ -120,6 +142,7 @@ final Runnable closeonback=()-> {
       act.curve.statspresent=false;
       act.curve.summarybutton=null;
       Natives.analysedays(get,history);
+//      if(content!=null) content.removeOnLayoutChangeListener(resize);
       removeContentView(layout);
       if(smallScreen) {
          help.hidekeyboard(act);
@@ -136,8 +159,9 @@ private static void webPercentiles(Context context, int days,boolean history) {
     final long endtime=Natives.percentileEndtime(days);
 	final String key=Natives.getApiSecret();
     final String addkey=(key!=null&&!key.isEmpty())?key+"/":"";
-    final String type=(Natives.getDoCalibrate()?"&calibrated":"&")+(history?"history":"stream");
-    final String url="http://127.0.0.1:17580/"+addkey+"x/report?amounts&days="+days+"&endtime="+endtime+type+"&hl="+Applic.curlang;
+    final String type=(Natives.getDoCalibrate()?(
+    (Natives.getCalibratePast()?"&pastvalues":"")+"&calibrated"):"&")+(history?"history":"stream");
+    final String url="http://127.0.0.1:"+Natives.gethttpport()+"/"+addkey+"x/report?amounts&days="+days+"&endtime="+endtime+type+"&hl="+Applic.curlang;
     var intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
     context.startActivity(intent);
     }
@@ -156,13 +180,6 @@ static void mkstats(MainActivity act) {
       getMargins(history).rightMargin=(int)(GlucoseCurve.metrics.density*5.0);
       Button Curve = getbutton(act, R.string.summarygraph);
       Layout layout = new Layout(act, (l, w, h) -> {
-      /*
-         int height = GlucoseCurve.getheight();
-         int width = GlucoseCurve.getwidth();
-         if(width>w) l.setX(width - w-MainActivity.systembarRight);
-
-         if(height>h) l.setY((height - h -MainActivity. systembarBottom));
-         */
          return new int[]{w, h};
       }, new View[]{history,Days, Help},new View[]{Close,stats, Curve});
 
@@ -172,8 +189,10 @@ static void mkstats(MainActivity act) {
       act.curve.summarybutton=Curve;
 
     var  params =    new FrameLayout.LayoutParams( WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM| Gravity.RIGHT);
-    params.bottomMargin=MainActivity.systembarBottom;
-    params.rightMargin=MainActivity.systembarRight;
+    //params.bottomMargin=MainActivity.systembarBottom;
+   // params.rightMargin=MainActivity.systembarRight;
+    layout.systembarMargins((left,top,right,bottom)->new int[]{0,0,right,bottom});
+
       act.addMyContentView(layout, params);
     //  act.addMyContentView(layout, new ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
     final Runnable closeonback=()-> {

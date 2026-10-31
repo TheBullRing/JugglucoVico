@@ -95,7 +95,86 @@ import static tk.glucodata.NightPost.success;
 import static tk.glucodata.util.getlocale;
 
 public class Libreview  {
+private static final boolean doTest=doLog;
    private static final String LOG_ID="Libreview";
+private static final Object libreReceiverLock=new Object();
+private static boolean libreReceiverBusy=false;
+private static volatile String libreReceiverError="";
+
+public static long getlibreReceiverID() {
+   long id=Natives.getnewLibre3ReceiverID();
+   return id>=0L && id<=0xffffffffL?id:-1L;
+   }
+public static boolean hasLibreReceiverID() { return getlibreReceiverID()>=0L; }
+public static String getLibreReceiverError() { return libreReceiverError; }
+public static void invalidateLibreReceiverID() {
+   Natives.setnewLibre3ReceiverIDreceived(false);
+   }
+private static boolean libreReceiverFailed(String message) {
+   libreReceiverError=message;
+   Log.e(LOG_ID,"Libre receiver ID: "+message);
+   return false;
+   }
+
+// Blocking; use after legacy authentication, on a worker thread, not during NFC.
+@Keep
+public static boolean retrieveLibreReceiverID() {
+   final long generation;
+   final String email,token,applicationId;
+   synchronized(libreReceiverLock) {
+      if(hasLibreReceiverID()) return true;
+      if(libreReceiverBusy) return libreReceiverFailed("Retrieval already in progress");
+      generation=Natives.getnewLibre3ReceiverGeneration();
+      email=getlibreemail();
+      token=Natives.getlibreUserToken(true);
+      applicationId=Natives.getlibreDeviceID(true);
+      if(email==null || email.isEmpty() || token==null || token.isEmpty())
+         return libreReceiverFailed("Authenticate the configured Libre 3 account first");
+      libreReceiverBusy=true;
+      libreReceiverError="";
+      }
+   if(doLog) {
+      Log.i(LOG_ID,"Libre receiver retrieval generation="+generation+
+              " email="+email+" legacyToken="+token+" applicationId="+applicationId);
+      }
+   try {
+      LibreReceiverApi api=new LibreReceiverApi(Applic.app);
+      String validated=api.validate(token,email);
+      if(doLog) Log.i(LOG_ID,"Libre receiver validatedToken="+validated);
+      if(generation!=Natives.getnewLibre3ReceiverGeneration())
+         return libreReceiverFailed("Account changed during validation; conversion was not sent");
+      String receiver=api.convert(validated,applicationId);
+      long id=LibreReceiverApi.receiverNumber(receiver);
+      if(doLog) Log.i(LOG_ID,"Libre receiver conversion receiverID="+receiver+" numeric="+id);
+      if(!Natives.savenewLibre3ReceiverID(id,generation))
+         return libreReceiverFailed("Account changed during conversion; its result was not saved");
+      if(doLog) Log.i(LOG_ID,"Libre receiver saved receiverID="+receiver+" numeric="+id+" generation="+generation);
+      libreReceiverError="";
+      return true;
+      }
+   catch(Exception | LinkageError ex) {
+      return libreReceiverFailed(ex.getClass().getSimpleName()+": "+ex.getMessage());
+      }
+   finally {
+      synchronized(libreReceiverLock) { libreReceiverBusy=false; }
+      }
+   }
+private static boolean testLibreReceiverCrypto() {
+    if(doTest) {
+       if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())
+          return libreReceiverFailed("Crypto selftest must run on a worker thread");
+       try {
+          LibreReceiverApi.selftest(Applic.app);
+          return true;
+          }
+       catch(Exception | LinkageError ex) {
+          return libreReceiverFailed(ex.getClass().getSimpleName()+": "+ex.getMessage());
+          }
+        }
+    else {
+        return false;
+        }
+   }
 private static String getputtext(String sensorid,String usertoken,String gateway) {
  return "{\"DomainData\":\"{\\\"activeSensor\\\":\\\""+sensorid+"\\\"}\",\"UserToken\":\""+usertoken +"\",\"Domain\":\"Libreview\",\"GatewayType\":\""+gateway+"\"}";
  }
@@ -125,12 +204,55 @@ static JSONObject  readJSONObject(HttpURLConnection urlConnection)  throws IOExc
 
 private static String librestatus=nothing;
 
+/*
+ * Keep retrying failures that can reasonably disappear when connectivity returns,
+ * but stop LibreView uploads after a permanent rejection or a local/configuration
+ * error.  postmeasurements() uses lastFailurePermanent to propagate the result of
+ * authentication/configuration recovery without changing their public JNI API.
+ */
+private static boolean lastFailurePermanent=false;
+
+private static boolean retryableResponseCode(final int code) {
+   return code==408 || code==425 || code==429 || code>=500;
+   }
+
+private static boolean temporaryNetworkProblem(Throwable th) {
+   boolean ioFailure=false;
+   while(th!=null) {
+      if(th instanceof java.net.MalformedURLException ||
+            th instanceof java.net.ProtocolException)
+         return false;
+      if(th instanceof IOException)
+         ioFailure=true;
+      th=th.getCause();
+      }
+   return ioFailure;
+   }
+
+private static boolean libreFailure(final String status,final boolean permanent) {
+   lastFailurePermanent=permanent;
+   librestatus=status;
+   Log.e(LOG_ID,status);
+   return false;
+   }
+
+private static boolean libreFailure(final String status,final Throwable th) {
+   return libreFailure(status,!temporaryNetworkProblem(th));
+   }
+
+private static boolean stopLibreviewUploads(final String status) {
+   lastFailurePermanent=true;
+   librestatus=status+"; LibreView upload disabled";
+   Log.e(LOG_ID,librestatus);
+   setuselibreview(false);
+   return false;
+   }
+
 @Keep
-static boolean putsensor(boolean libre3,byte[] textbytes) {
+static int putsensor(boolean libre3,byte[] textbytes,int i) {
    if(librestatus==nothing||librestatus==success)
       librestatus=datestr(System.currentTimeMillis())+" start putsensor";
    try {
-   for(int i=0;i<3;i++) {
       final String gateway=getlibregateway(libre3);
       final String baseurl=getlibrebaseurl(libre3);
       URL url = new URL(baseurl+"/api/nisperson");
@@ -149,39 +271,40 @@ static boolean putsensor(boolean libre3,byte[] textbytes) {
       if(status!=0) {
          String reason=object.getString("reason");
          if(status==20) {
-            if(reason.contains("wrongDeviceInToken")) {
+            String lowreason=reason.toLowerCase(Locale.US);
+            if(reason!=null&&(lowreason.contains("wrongdeviceintoken")||lowreason.contains("invalid"))) {
                switch(i) {
                   case 0:{
                   if(!postgetauth(libre3)) {
-                     if(!libreconfig(libre3,false))
-                        return false;
-                     i=1;
-                        }
-                     };break;
+                       if(!libreconfig(libre3,false)) 
+                          return -1;
+                       return 2;
+                       }
+                      };
+                     return 1;
                     case 1: {
                      if(!libreconfig(libre3,false))
-                        return false;
-                     };break;
+                        return -1;
+                     };
+                     return 2;
                   default: {
                      librestatus="putsensor  reason="+reason;
-                     return false;
+                     return -1;
                      }
 
                   }
-               continue;
                }
             }
 
          librestatus="putsensor: status="+status+(reason==null?"":(" reason="+reason));
+         return -1; 
          }
-      return status==0;
-        }
-   return false;
+      return 0;
       }  
    catch(Throwable th) {
       librestatus="putsensor "+ stackline(th);
       Log.e(LOG_ID,librestatus);
-      return false;
+      return -1;
       }
    }
 static String getlibregateway(boolean libre3) {
@@ -218,6 +341,7 @@ static private boolean gettermversion(String lang) {
    }
 
 static boolean postgetauth(boolean libre3) {
+   lastFailurePermanent=false;
    String gateway=getlibregateway(libre3);
    String one= Natives.getlibreDeviceID(libre3);
 
@@ -227,9 +351,10 @@ static boolean postgetauth(boolean libre3) {
    {if(doLog) {Log.i(LOG_ID,"postgetauth "+login+" "+password);};};
 
    var loc= Locale.getDefault();
-   String language=loc.getLanguage()+'-'+loc.getCountry();
+   String language=loc.getLanguage()+'-'+tk.glucodata.util.getCountry();
    String culture=language;
    String setdevice="false";
+   
    while(true) {
       try {
       final String baseurl=getlibrebaseurl(libre3);
@@ -284,16 +409,15 @@ static boolean postgetauth(boolean libre3) {
          int status=object.getInt("status");
          if(status!=0) {
             String reason=object.getString("reason");
-            String poststatus="postgetauth: status="+status+" reason="+reason;
+            String poststatus="postgetauth: status="+status+" reason="+(reason==null?"null":reason);
             Log.e(LOG_ID,poststatus);
             if(status==20) {
-               if(reason.contains("wrongDeviceForUser")) {
+               if(setdevice.equals("false")&&(reason!=null&&reason.contains("wrongDeviceForUser"))) {
                   setdevice="true";
                   continue;   
                   }
                }
-            librestatus=poststatus;
-            return false;
+            return libreFailure(poststatus,true);
             }
          {if(doLog) {Log.i(LOG_ID,"getauth Success");};};
          JSONObject result=object.getJSONObject("result");
@@ -339,15 +463,11 @@ static boolean postgetauth(boolean libre3) {
          return true;
          }
       else {
-         librestatus="postgetauth: urlConnection.getResponseCode()="+code;
-         return false;
+         return libreFailure("postgetauth: urlConnection.getResponseCode()="+code,!retryableResponseCode(code));
          }
        }
       catch(Throwable th) {
-         librestatus="postgetauth:\t"+ stackline(th);
-
-         Log.e(LOG_ID,librestatus);
-         return false;
+         return libreFailure("postgetauth:\t"+stackline(th),th);
          }
    }
  }
@@ -360,6 +480,16 @@ static boolean postmeasurements(byte[] measurementdata) {
 static String posttime=null;
 @Keep
 static boolean postmeasurements(boolean libre3,byte[] measurementdata) {
+
+    if(doTest) {
+        if(!Libreview.testLibreReceiverCrypto()) {
+            Log.e("LibreReceiver", Libreview.getLibreReceiverError());
+          }
+       else
+            Log.i("LibreReceiver", "Crypto self-test: PASS");
+        }
+
+   lastFailurePermanent=false;
    String nowstr=datestr(System.currentTimeMillis());
    if(librestatus==nothing||librestatus==success)
       librestatus=nowstr+" start posting";
@@ -380,7 +510,8 @@ static boolean postmeasurements(boolean libre3,byte[] measurementdata) {
          urlConnection.setRequestProperty("Abbott-ADC-App-Platform","Android/"+((Object) Build.VERSION.RELEASE) +"/FSL3/3.3.0.9092");
  
          var loc= Locale.getDefault();
-         String language=loc.getLanguage()+'-'+loc.getCountry();
+         String language=loc.getLanguage()+'-'+tk.glucodata.util.getCountry();
+ 
          urlConnection.setRequestProperty("Accept-Language",language);
          final String newYuApiKey=getnewYuApiKey(libre3);
          urlConnection.setRequestProperty("x-api-key", newYuApiKey);
@@ -403,18 +534,25 @@ static boolean postmeasurements(boolean libre3,byte[] measurementdata) {
                   switch(i) {
                      case 0:{
                         if(!postgetauth(libre3)) {
-                           if(!libreconfig(libre3,false))
+                           if(lastFailurePermanent)
+                              return stopLibreviewUploads(librestatus);
+                           if(!libreconfig(libre3,false)) {
+                              if(lastFailurePermanent)
+                                 return stopLibreviewUploads(librestatus);
                               return false;
+                              }
                            i=1;
                            }
                         };break;
                      case 1: {
-                        if(!libreconfig(libre3,false))
+                        if(!libreconfig(libre3,false)) {
+                           if(lastFailurePermanent)
+                              return stopLibreviewUploads(librestatus);
                            return false;
+                           }
                         };break;
                      default: {
-                        librestatus="postmeasurements1 status="+status+" reason="+reason;
-                        return false;
+                        return stopLibreviewUploads("postmeasurements1 status="+status+" reason="+reason);
                         }
 
                      }
@@ -422,26 +560,26 @@ static boolean postmeasurements(boolean libre3,byte[] measurementdata) {
                   continue;
                   }
                }
-            librestatus="postmeasurements2 status="+status+" reason="+reason;
-            return false;
+            return stopLibreviewUploads("postmeasurements2 status="+status+" reason="+reason);
             }
          posttime=nowstr;
          librestatus=success;
          return true;
          }
       else {
-         librestatus="postmeasurements ResponseCode="+code;
-         {if(doLog) {Log.i(LOG_ID,librestatus);};};
-         return false;
+         final String status="postmeasurements ResponseCode="+code;
+         if(retryableResponseCode(code))
+            return libreFailure(status,false);
+         return stopLibreviewUploads(status);
          }
          }
       return false;
        }
    catch(Throwable th) {
       final String posterror="postmeasurements\n"+stackline(th);
-      librestatus=posterror;
-      Log.e(LOG_ID,posterror);
-      return false;
+      if(temporaryNetworkProblem(th))
+         return libreFailure(posterror,false);
+      return stopLibreviewUploads(posterror);
       }
  }
  /*TODO: where:
@@ -457,6 +595,7 @@ static boolean postmeasurements(boolean libre3,byte[] measurementdata) {
 private static String termsofuseversionurl=null;
 private static final String libre3start="https://fsll3.freestyleserver.com/Payloads/Mobile/FSLibre3/Android/Assets/3.3.0/DE.json";
 private static String  libre3getconfigURL() {
+   lastFailurePermanent=false;
    try {
 
       URL url = new URL(libre3start);
@@ -478,15 +617,13 @@ private static String  libre3getconfigURL() {
             } 
          }
       else {
-         librestatus="libre3getconfigURL failed code="+code;
-         Log.e(LOG_ID,librestatus);
+         libreFailure("libre3getconfigURL failed code="+code,!retryableResponseCode(code));
          return null;
          }
 
       }
    catch(Throwable th) {
-      librestatus="libre3getconfigURL:\n"+(th==null?"Network error ":th.getMessage());
-      Log.e(LOG_ID,librestatus);
+      libreFailure("libre3getconfigURL:\n"+(th==null?"Network error ":th.getMessage()),th);
       return null;
       }
    }
@@ -498,6 +635,7 @@ public static void testlibre3() {
 //https://fsll.freestyleserver.com/Payloads/Mobile/Android/FSLibreLink/Config/FreeStyleLibreLink_Android_2.3_DE_config.json
 @Keep
 public static boolean libreconfig(boolean libre3,boolean restart){
+   lastFailurePermanent=false;
    if(restart||librestatus==nothing||librestatus==success)
       librestatus=datestr(System.currentTimeMillis())+" libreconfig";
    {if(doLog) {Log.i(LOG_ID,librestatus);};};
@@ -552,17 +690,12 @@ final String libre210url=urlnames[Natives.getLibreCountry()];
          return postgetauth(libre3);
          }
       else {
-         librestatus="urlConnection.getResponseCode()="+code;
-         Log.e(LOG_ID,librestatus);
-         return false;
+         return libreFailure("libreconfig: urlConnection.getResponseCode()="+code,!retryableResponseCode(code));
          }
 
       }
    catch(Throwable th) {
-      librestatus="libreconfig:\n"+stackline(th);
-
-      Log.e(LOG_ID,librestatus);
-      return false;
+      return libreFailure("libreconfig:\n"+stackline(th),th);
       }
    }
 
@@ -594,11 +727,6 @@ private static void resendDateDialog(MainActivity context,View parent) {
    int[]  min={cal.get(Calendar.MINUTE)};
    var timebutton=getbutton(context,  String.format(Locale.US,"%02d:%02d",hour[0],min[0] ));
    var layout=new Layout(context,(x,w,h)->{
-   /*
-         var width=GlucoseCurve.getwidth();
-         x.setX((width-w)/2);
-         x.setY(MainActivity.systembarTop);
-         */
          return new int[] {w,h};
            },new View[]{helpbutton,sendfrom},new View[]{datebutton,timebutton},new View[]{ok,cancel});
    timebutton.setOnClickListener(v-> {
@@ -774,7 +902,8 @@ private static void getAccountid(MainActivity context,    Predicate<Boolean> get
 public static void  config(MainActivity act, View settingsview,CheckDirectionBox sendto,boolean[] donothing) {
    EnableControls(settingsview,false);
    var emaillabel=getlabel(act,R.string.email);
-   var email=getedit(act, getlibreemail());
+   final var wasemail=getlibreemail();
+   var email=getedit(act, wasemail);
         email.setMinEms(16);
 
    var passlabel=getlabel(act,act.getString(R.string.password)+":");
@@ -820,20 +949,18 @@ public static void  config(MainActivity act, View settingsview,CheckDirectionBox
    long accountidnum=Natives.getlibreAccountIDnumber();
    var accountid=getlabel(act, String.valueOf(accountidnum));
    var getaccountid=getbutton(act,R.string.getaccountid);
+   var newLibre3=getcheckbox(act,"New Libre app",Natives.getnewLibre3Activation());
+   newLibre3.setOnCheckedChangeListener( (buttonView,  isChecked) -> {
+       Natives.setnewLibre3Activation(isChecked);
+      });
+   long recid=getlibreReceiverID();
+   var receiverIdstr=getlabel(act,""+recid);
    final Layout layout=new Layout(act, (lay, w, h) -> {
-   /*
-      var height=GlucoseCurve.getheight();
-      var width=GlucoseCurve.getwidth();
-      if(w>=width||h>=height) {
-            lay.setX(0);
-            }
-       else {
-            lay.setX((width-w)/2); 
-            };
-       lay.setY(MainActivity.systembarTop);
-       */
        return new int[] {w,h};}, 
-                new View[]{emaillabel,email},new View[]{passlabel,editpass,russia},new View[]{clear,accountid,getaccountid},new View[]{statusview},new View[]{ librecurrent,libreisviewed}, new View[]{sendtolibreview,numbers},new View[]{send,help,cancel,ok});
+                new View[]{emaillabel,email},new View[]{passlabel,editpass,russia},new View[]{clear,accountid,getaccountid},new View[]{statusview},new View[]{ librecurrent,newLibre3,receiverIdstr}, new View[]{sendtolibreview,libreisviewed,numbers},new View[]{send,help,cancel,ok});
+    layout.portraitLayout(new View[]{emaillabel,email},new View[]{passlabel,editpass},new View[]{accountid,getaccountid},new View[]{newLibre3,receiverIdstr},new View[]{statusview},new View[]{ librecurrent,libreisviewed}, new View[]{sendtolibreview,numbers},
+new View[]{russia,clear,help},
+    new View[]{send,cancel,ok});
 
     clear.setOnClickListener(v->  {
          resendDateDialog(act,layout);
@@ -890,7 +1017,8 @@ public static void  config(MainActivity act, View settingsview,CheckDirectionBox
                return false;
                }
             }   
-         setlibreemail(emailstr);
+         if(!wasemail.equals(emailstr))
+             setlibreemail(emailstr);
          setlibrepass(passstr);
          if((emailstr.length()==0&&passstr.length()==0)) {
             Natives.clearlibreFromMSec(0L);

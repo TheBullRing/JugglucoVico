@@ -34,7 +34,6 @@ import static tk.glucodata.Applic.app;
 import static tk.glucodata.Applic.explicit;
 import static tk.glucodata.Applic.isRelease;
 import static tk.glucodata.Applic.isWearable;
-import static tk.glucodata.Applic.scanpermissions;
 import static tk.glucodata.Applic.talkbackoff;
 import static tk.glucodata.Applic.talkbackon;
 import static tk.glucodata.Applic.useZXing;
@@ -50,14 +49,32 @@ import static tk.glucodata.Natives.setShownintro;
 import static tk.glucodata.Natives.wakelibreview;
 import static tk.glucodata.help.hidekeyboard;
 import static tk.glucodata.settings.Settings.removeContentView;
+import android.widget.TextView;
+import android.widget.EditText;
 
+
+import android.graphics.Rect;
+import android.os.Build;
+import android.graphics.Point;
+import android.app.Activity;
+import android.view.MotionEvent;
+import android.view.Surface;
+import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.ViewGroup;
+
+import androidx.recyclerview.widget.RecyclerView;
+
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
 import androidx.activity.OnBackPressedCallback;
 
 import java.util.Arrays;
 
+import android.database.ContentObserver;
 import android.Manifest;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 //import androidx.appcompat.app.AlertDialog;
@@ -65,6 +82,7 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.ConfigurationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -80,8 +98,6 @@ import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.KeyEvent;
-import android.view.View;
-import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -105,6 +121,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 
@@ -155,9 +172,8 @@ private void startall() {
        }
    }
 
-static private  int askedNotify=5;
 
-private  void               onceshowintro() {
+ void               onceshowintro() {
                  if(getlibrary.showintro) {
                    getlibrary.showintro=false;
                    MainActivity act=this;
@@ -172,27 +188,67 @@ private  void               onceshowintro() {
                           }); 
                    }
                 }
+private final Deque<Runnable> permissionQueue=new ArrayDeque<>();
+private final Set<Integer> pendingPermissionCodes=new HashSet<>();
+private int activePermissionCode=-1;
+
+void queuePermissionRequest(int requestCode,Runnable request) {
+    RunOnUiThread(() -> {
+        if(pendingPermissionCodes.add(requestCode)) {
+            permissionQueue.addLast(() -> {
+                activePermissionCode=requestCode;
+                request.run();
+                });
+            nextPermissionRequest();
+            }
+        });
+    }
+
+private void nextPermissionRequest() {
+    if(activePermissionCode==-1 && !permissionQueue.isEmpty())
+        permissionQueue.removeFirst().run();
+    }
+
+private void permissionFinished(int requestCode) {
+    if(activePermissionCode==requestCode) {
+        activePermissionCode=-1;
+        pendingPermissionCodes.remove(requestCode);
+        nextPermissionRequest();
+        }
+    }
+
+static private  int askedNotify=5;
 boolean askNotify() {
-      askedNotify=0;
-      if(Build.VERSION.SDK_INT >=33)  {
+     if(Build.VERSION.SDK_INT >=33)  {
         var perm= Manifest.permission.POST_NOTIFICATIONS;
         if(ContextCompat.checkSelfPermission(this, perm)!= PackageManager.PERMISSION_GRANTED)  {
-            {if(doLog) {Log.i(LOG_ID,"askNotify");};};
-            var permar=new String[]{perm};
-            if(shouldShowRequestPermissionRationale(perm) ) {
-                 help.help(R.string.notificationpermission,this,l-> {
+            queuePermissionRequest(NOTIFICATION_PERMISSION_REQUEST_CODE, () -> {
+                if(ContextCompat.checkSelfPermission(this, perm)==PackageManager.PERMISSION_GRANTED) {
+                    askedNotify=-1;
+                    Log.i(LOG_ID,"askNotify explicit");
+                    explicit(this);
+                    permissionFinished(NOTIFICATION_PERMISSION_REQUEST_CODE);
+                    return;
+                    }
+                askedNotify=-1;
+                {if(doLog) {Log.i(LOG_ID,"askNotify");};};
+                var permar=new String[]{perm};
+                if(shouldShowRequestPermissionRationale(perm) ) {
+                     help.help(R.string.notificationpermission,this,l-> {
+                        requestPermissions(permar, NOTIFICATION_PERMISSION_REQUEST_CODE);
+                        });
+                    }
+                else   {
                     requestPermissions(permar, NOTIFICATION_PERMISSION_REQUEST_CODE);
-                    });
-                }
-            else   {
-                requestPermissions(permar, NOTIFICATION_PERMISSION_REQUEST_CODE);
-                }
+                    }
+                });
             return false;
             }
         }
-   Log.i(LOG_ID,"askNotify explicit");
+    askedNotify=-1;
+    Log.i(LOG_ID,"askNotify explicit");
     explicit(this);
-   return true;
+    return true;
     }
 public static int systembarTop=0;
 public static int systembarBottom=0;
@@ -215,31 +271,34 @@ private void startdisplay() {
        if(!isWearable) {
           if(Build.VERSION.SDK_INT >= 30) {
                  setOnApplyWindowInsetsListener(curve,(v, windowInsets) -> {
+                 int oldScreenWidth=screenwidth;
+                 int oldScreenHeight=screenheight;
                  setsizes(this);
                  Insets  insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+                 boolean geometryChanged=oldScreenWidth!=screenwidth||oldScreenHeight!=screenheight||
+                         systembarLeft!=insets.left||systembarTop!=insets.top||
+                         systembarRight!=insets.right||systembarBottom!=insets.bottom;
                  {if(doLog) {Log.i(LOG_ID, "systemBars: left="+insets.left+ " right="+insets.right+ " bottom="+insets.bottom+ " top="+insets.top);};};
                  Natives.systembar(insets.left, insets.top, insets.right, insets.bottom);
 
-                 systembarLeft=insets.left;
-                 systembarTop=insets.top;
-                 systembarRight=insets.right;
-                 systembarBottom=insets.bottom;
-                 if(rtl) {
-                     systembarStart=systembarRight;
-                     systembarEnd=systembarLeft;
-                     }
-                 else {
-                     systembarStart=systembarLeft;
-                     systembarEnd=systembarRight;
-                     }
+                systembarLeft=insets.left;
+                systembarTop=insets.top;
+                systembarRight=insets.right;
+                systembarBottom=insets.bottom;
+                if(rtl) {
+                    systembarStart=systembarRight;
+                    systembarEnd=systembarLeft;
+                    }
+                else {
+                    systembarStart=systembarLeft;
+                    systembarEnd=systembarRight;
+                    }
                  requestRender();
-                 onceshowintro();
+                 if(geometryChanged)
+                    curve.requestOverlayLayout();
                  return windowInsets;
               });
               }
-        else {
-            }
-
           lightBars(!getInvertColors( ));
           }
         setContentView(curve);
@@ -384,11 +443,11 @@ private void startdisplay() {
     } else {
         applyScreenOrientation(getResources().getConfiguration());
     }
-   if(!isWearable) {
-      if(Build.VERSION.SDK_INT < 30) {
-         onceshowintro();
-         }
-      }
+    if(!isWearable) {
+       if(Build.VERSION.SDK_INT < 30) {
+          onceshowintro();
+          }
+       }
 
     handleIntent(getIntent());
     var langstring=getString(R.string.language);
@@ -598,12 +657,24 @@ private static boolean getIsElongated(Configuration config) {
     return aspectRatio >= 1.45f;
   }
 private boolean isSystemAutoRotateEnabled() {
-    return android.provider.Settings.System.getInt(getContentResolver(),android.provider.Settings.System.ACCELEROMETER_ROTATION,1) != 0;
+    /*
+     * ACCELEROMETER_ROTATION is stored per Android user.  In a managed/work
+     * profile that row can differ from the parent user's display setting,
+     * while orientation of the physical display is still governed by the
+     * parent/current display policy.  In that case do not veto Juggluco's
+     * Auto-rotate option here: SCREEN_ORIENTATION_FULL_USER lets WindowManager
+     * apply the real user rotation policy.
+     */
+    if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        android.os.UserManager userManager=(android.os.UserManager)getSystemService(Context.USER_SERVICE);
+        if(userManager!=null&&userManager.isManagedProfile())
+            return true;
+        }
+    return Settings.System.getInt(getContentResolver(),Settings.System.ACCELEROMETER_ROTATION,1) != 0;
     }
-
 private boolean observingAutoRotate = false;
 
-private final android.database.ContentObserver autoRotateObserver =isWearable?null:new android.database.ContentObserver(Applic.getHandler()) {
+private final ContentObserver autoRotateObserver =isWearable?null:new ContentObserver(Applic.getHandler()) {
     @Override
     public void onChange(boolean selfChange) {
         if (doLog) {
@@ -615,52 +686,176 @@ private final android.database.ContentObserver autoRotateObserver =isWearable?nu
 };
 
 private static final boolean testPortrait=false;
+
+/*
+ * Large-screen graph orientation modes.
+ *
+ * graphLockedToFirstLandscape:
+ *   Android 16+ elongated screen with rotation disabled. Android is allowed to
+ *   find either landscape side and that first landscape side is then locked.
+ *
+ * graphUsesCurrentOrientationAsLandscape:
+ *   Nearly-square large screen. The graph treats the current surface as an
+ *   ordinary landscape-style canvas (menus left-to-right over the current
+ *   width). Android remains free to rotate while auto-rotate is enabled and is
+ *   locked in its current orientation while auto-rotate is disabled.
+ */
+public static volatile boolean graphLockedToFirstLandscape=false;
+public static volatile boolean graphUsesCurrentOrientationAsLandscape=false;
+
+private void setGraphOrientationModes(boolean locked,boolean currentAsLandscape) {
+    final boolean geometryChanged=graphUsesCurrentOrientationAsLandscape!=currentAsLandscape;
+    if(graphLockedToFirstLandscape==locked && !geometryChanged)
+        return;
+    graphLockedToFirstLandscape=locked;
+    graphUsesCurrentOrientationAsLandscape=currentAsLandscape;
+    if(curve!=null) {
+        curve.syncNativeDisplayRotation();
+        if(geometryChanged)
+            curve.refreshNativeGeometry();
+        else
+            curve.requestRender();
+        }
+    }
+
+private boolean menuForcesLandscape=false;
+
+/*
+ * Do not use requestOrientationOnce() while Menus owns the orientation.
+ * A preceding FULL_USER request can still have a portrait configuration
+ * queued even though lastOrientationRequest already says landscape.  In
+ * that case the landscape request has to be reasserted.
+ */
+/*
+private void forceMenuLandscape() {
+    final int wanted=Natives.getScreenOrientation();
+    lastOrientationRequest=wanted;
+    setRequestedOrientation(wanted);
+    } */
+
+public void setMenuForcesLandscape(boolean force) {
+    if(isWearable)
+        return;
+/*
+    if(force) {
+        menuForcesLandscape=true;
+        forceMenuLandscape();
+        return;
+        }
+    if(!menuForcesLandscape)
+        return; */
+    menuForcesLandscape=force;
+    applyScreenOrientation(getResources().getConfiguration());
+    }
+
+/*
+ * With RotateText enabled the portrait graph is the landscape graph rotated
+ * so that its top is at the left and its bottom at the right.  Menus should
+ * use that same landscape side.  In an existing landscape orientation keep
+ * the side that is already on screen.
+ */
+@SuppressWarnings("deprecation")
+private int getMenuLandscapeOrientation(Configuration config) {
+    if(!menuForcesLandscape || !Natives.getRotateText())
+        return Natives.getScreenOrientation();
+
+    final int rotation=getWindowManager().getDefaultDisplay().getRotation();
+    if(config.orientation==Configuration.ORIENTATION_PORTRAIT) {
+        /*
+         * Choose the landscape whose top is at the current portrait left and
+         * bottom at the current portrait right.  ROTATION_90/270 also cover
+         * devices whose natural orientation is landscape.
+         */
+        switch(rotation) {
+            case Surface.ROTATION_0:
+            case Surface.ROTATION_270:
+                return ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+            case Surface.ROTATION_90:
+            case Surface.ROTATION_180:
+                return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+            }
+        }
+    else if(config.orientation==Configuration.ORIENTATION_LANDSCAPE) {
+        /* RotateText uses whichever landscape side is already on screen. */
+        return ActivityInfo.SCREEN_ORIENTATION_LOCKED;
+        }
+
+    return Natives.getScreenOrientation();
+    }
+
+private boolean handlingConfigurationChange=false;
+
+public boolean isHandlingConfigurationChange() {
+    return handlingConfigurationChange;
+    }
 public void applyScreenOrientation(Configuration config) {
 if(!isWearable) {
-    // Old UI (OpenGL/NanoVG) has no portrait layout — always lock to landscape
-    // regardless of user preference. This covers onStart, onConfigurationChanged
-    // and the autoRotateObserver, all of which call this method unconditionally.
     if (!Applic.useVicoChart()) {
         requestOrientationOnce(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         return;
     }
-     boolean largeScreen=testPortrait||config.smallestScreenWidthDp >=600;
-     canRotate=Build.VERSION.SDK_INT < 36||!largeScreen;
-     boolean isElongated=testPortrait||getIsElongated(config);
     try {
+    /*
+    if(menuForcesLandscape) {
+        forceMenuLandscape();
+        return;
+        } */
+
     int wanted;
-    if(!largeScreen) {
-         // Sentinel 127 (uint8_t:7 default) means "never been set" — treat as UNSPECIFIED.
-         // Also treat stored==0 (LANDSCAPE, the C++ field default) as UNSPECIFIED so that
-         // users who previously ran the old UI (which always wrote LANDSCAPE=0) can still
-         // rotate freely in the Vico path. The user can fix orientation via Settings.
-         // stored==-1 (UNSPECIFIED) is also treated as free rotation.
-         int stored = Applic.Nativesloaded ? Natives.getScreenOrientation() : 127;
-         wanted = (stored == 127 || stored == 0 || stored == -1) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : stored;
-         }
+    final boolean dorotate=!menuForcesLandscape&&Natives.getRotate()&&isSystemAutoRotateEnabled();
+    final boolean largeScreen=testPortrait||config.smallestScreenWidthDp >=600;
+    final boolean isElongated=testPortrait||getIsElongated(config);
+    final boolean android16LargeScreen=testPortrait||hasAndroid16LargeScreenRestriction();
+
+    /*
+     * Elongated Android-16 large screen with rotation disabled:
+     * use SENSOR until either landscape side is reached, then lock exactly
+     * that first landscape side.
+     *
+     * Nearly-square large screen:
+     * the graph always treats the current Android surface as an ordinary
+     * landscape-style canvas.  With auto-rotate enabled Android stays
+     * FULL_USER.  With auto-rotate disabled the Activity is LOCKED in the
+     * exact orientation it currently has (also at first startup), so both the
+     * Android GUI and the graph remain in that orientation.
+     */
+    final boolean lockFirstLandscape=largeScreen && isElongated &&
+            android16LargeScreen && !dorotate;
+    final boolean lockNow=lockFirstLandscape &&
+            config.orientation==Configuration.ORIENTATION_LANDSCAPE;
+    final boolean nearlySquare=largeScreen && !isElongated;
+    final boolean currentAsLandscape=nearlySquare;
+
+    setGraphOrientationModes(lockNow,currentAsLandscape);
+
+    if(lockFirstLandscape) {
+        if(lockNow)
+            wanted=ActivityInfo.SCREEN_ORIENTATION_LOCKED;
+        else
+            wanted=ActivityInfo.SCREEN_ORIENTATION_SENSOR;
+        }
+    else if(nearlySquare) {
+        wanted=dorotate ? ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+                        : ActivityInfo.SCREEN_ORIENTATION_LOCKED;
+        }
+    else if(dorotate) {
+        wanted=ActivityInfo.SCREEN_ORIENTATION_FULL_USER;
+        }
     else {
-        if(!isElongated) {
-            wanted=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+        canRotate=Build.VERSION.SDK_INT < 36||!largeScreen;
+        if(!largeScreen) {
+            int stored = Applic.Nativesloaded ? Natives.getScreenOrientation() : 127;
+            wanted = (stored == 127 || stored == 0 || stored == -1) ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : stored;
+            }
+        else if(android16LargeScreen) {
+            /* Normally covered by lockFirstLandscape above. */
+            wanted=ActivityInfo.SCREEN_ORIENTATION_SENSOR;
             }
         else {
-                if(testPortrait||hasAndroid16LargeScreenRestriction()) {
-                    if(!isSystemAutoRotateEnabled()) {
-                        if(config.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                            wanted= android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED;
-                            }
-                        else {
-                            wanted=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR;
-                            }
-                         }
-                     else  {
-                        wanted= android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER;
-                        }
-               }
-             else {
-                    wanted = Natives.getScreenOrientation();
-                    }
+            wanted=getMenuLandscapeOrientation(config);
             }
         }
+
     requestOrientationOnce(wanted);
       }
      catch(       Throwable  error) {
@@ -701,6 +896,14 @@ if(!isWearable) {
         super.onCreate(savedInstanceState);
         setBackPress();
 
+        /*
+         * Menus is a transient overlay. Its static state is useful while the
+         * same task handles configuration changes, but it must not leak into
+         * a newly created task after the old task was removed from Recents.
+         */
+        if(!isWearable && savedInstanceState==null)
+            Menus.newTask();
+
        if(Applic.DynamicTheme)  {
              isLightTheme=getIsLightTheme();
              }
@@ -725,6 +928,7 @@ if(!isWearable) {
       DisplayMetrics metrics= this.getResources().getDisplayMetrics();
       screenheight= metrics.heightPixels;
       screenwidth= metrics.widthPixels;
+
       {if(doLog) {Log.i(LOG_ID,"onCreate start target="+ TargetSDK);};};
       if(TargetSDK>30) {
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -736,7 +940,7 @@ if(!isWearable) {
          return;
       startall();
       Natives.onCreate();
-      if(Menus.on)
+     if(!isWearable&&Menus.on)
            Menus.show(this);
 
 //        var gestureListener= new Layout.ScrollListener(); mGestureDetector = new GestureDetector(this, gestureListener);
@@ -748,6 +952,7 @@ void handleIntent(Intent intent) {
     if(intent==null)
         return;
     final Bundle extras = intent.getExtras();
+    Log.i(LOG_ID,"handleIntent "+intent.toString()+" extras="+extras);
     if(extras!=null)  {
         if(extras.getBoolean(Notify.fromnotification, false)) {
             {if(doLog) {Log.i(LOG_ID,"fromnotification");};};
@@ -770,7 +975,6 @@ void handleIntent(Intent intent) {
             }
         }
     var action= intent.getAction();
-
        if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0&&"android.nfc.action.TECH_DISCOVERED".intern()==action) {
            curve.waitnfc=true;
            {if(doLog) {Log.d(LOG_ID,"TECH_DISCOVERED");};};
@@ -805,6 +1009,11 @@ void handleIntent(Intent intent) {
               }
               ;
               }
+           else {
+               if(intent.hasCategory("android.intent.category.HEALTH_PERMISSIONS")) {
+                          help.help(R.string.healthpermission, this);
+                        }
+                }
               }
             return;
           }
@@ -902,6 +1111,7 @@ static boolean tocalendarapp=false;
     protected void onResume() {
     if(doLog) {Log.i(LOG_ID,"onResume");};;
     super.onResume();
+    if(!isWearable && Build.VERSION.SDK_INT>=28) ActivityHealth.onResume(this);
     if(curve!=null) {
         if(!curve.waitnfc) {
             {if(doLog) {Log.d(LOG_ID,"onResume setnfc");};};
@@ -931,7 +1141,7 @@ static boolean tocalendarapp=false;
 
 if(!isWearable) {
     if(!observingAutoRotate) {
-        getContentResolver().registerContentObserver(android.provider.Settings.System.getUriFor(android.provider.Settings.System.ACCELEROMETER_ROTATION), false, autoRotateObserver);
+        getContentResolver().registerContentObserver(Settings.System.getUriFor(Settings.System.ACCELEROMETER_ROTATION), false, autoRotateObserver);
         observingAutoRotate = true;
         }
     applyScreenOrientation(getResources().getConfiguration());
@@ -962,7 +1172,7 @@ if(!isWearable) {
      
      if(!showsdialog) {
          if(askedNotify>=0) {
-            if(askedNotify==0)
+             if(askedNotify==0)
                 askNotify();
             else
                 --askedNotify;
@@ -995,7 +1205,7 @@ if(!isWearable) {
                 if(!DontTalk) {
                     talkbackon(this);
                     }
-                if(!Menus.on)
+                if(!isWearable&&!Menus.on)
                     Menus.show(this);
             }
         else {
@@ -1161,6 +1371,7 @@ void activateresult(boolean res) {
                 }
             }
         super.onPause();
+    if(!isWearable && Build.VERSION.SDK_INT>=28) ActivityHealth.onPause();
         if(!Applic.Nativesloaded)
             return;
         Natives.wakeuploader();
@@ -1319,23 +1530,41 @@ void removeconfig() {
           }
       }
     }
+
+
 @Override
 public void onConfigurationChanged(Configuration newConfig) {
     super.onConfigurationChanged(newConfig);
     if(doLog) {Log.i(LOG_ID,"onConfigurationChanged height=" +newConfig.screenHeightDp+" width=" +newConfig.screenWidthDp + " sw="+newConfig.smallestScreenWidthDp);};
-if(!isWearable) {
-    applyScreenOrientation(newConfig);
-    }
-    removeconfig();
-    setsizes(this);
-    if(GlucoseCurve.height==0)
-        GlucoseCurve.setgeo(screenwidth,screenheight);
-   updateRtl(newConfig);
-    if(curve!=null)
-          curve.configurationChanged(this);
-    // Rebuild Settings overlay with correct portrait/landscape rows
-    tk.glucodata.settings.Settings.recreateIfOpen();
+    if(!isWearable)
+        handlingConfigurationChange=true;
+    try {
+        if(!isWearable) {
+            applyScreenOrientation(newConfig);
+            }
+        removeconfig();
+        setsizes(this);
+        if(GlucoseCurve.height==0)
+            GlucoseCurve.setgeo(screenwidth,screenheight);
+        updateRtl(newConfig);
+        if(curve!=null)
+            curve.configurationChanged(this);
+        // Rebuild Settings overlay with correct portrait/landscape rows
+        tk.glucodata.settings.Settings.recreateIfOpen();
+        }
+    finally {
+        if(!isWearable)
+            handlingConfigurationChange=false;
+        }
+
+    /* Recreate Menus only after all configuration-dependent geometry above
+     * has been updated. Menus.show() may have been requested while
+     * removeconfig() was unwinding Settings/Display. */
+    if(!isWearable)
+        Menus.configurationChanged(this,newConfig);
    }
+
+
 public void requestRender() {
     if(curve!=null)
         curve.requestRender();
@@ -1365,78 +1594,67 @@ boolean finepermission() {
     MainActivity act=this;
     {if(doLog) {Log.i(LOG_ID,"finepermission");};};
     if(Build.VERSION.SDK_INT >= 23) {
-        var noperm=Applic.hasPermissions( act, scanpermissions);
+        var noperm=Applic.refreshBluetoothPermissions(act);
         if(noperm.length==0) {
-           return systemlocation() ;
-           }
-RunOnUiThread(() -> {
-        for(var scanpermission:noperm) {
-            if(shouldShowRequestPermissionRationale(scanpermission)) {
-                gaverational=true;
-                help.help(Build.VERSION.SDK_INT>30?R.string.nearbypermission:R.string.locationpermission,act,l-> {
-                if(help.whelplayout!=null&&help.whelplayout.get()!=null) {
-                    removeContentView(help.whelplayout.get()); //setContentView makes view inaccessable
-                    help.whelplayout=null;
+              if((Build.VERSION.SDK_INT==29||Build.VERSION.SDK_INT==30)&&ContextCompat.checkSelfPermission(this, location_background_permission[0])!= PackageManager.PERMISSION_GRANTED) {
+                    queuePermissionRequest(BACKGROUND_LOCATION_REQUEST_CODE, ()->
+                            help.help(R.string.locationpermission,act,l-> {
+                                requestPermissions(location_background_permission, BACKGROUND_LOCATION_REQUEST_CODE);
+                                if(help.whelplayout!=null&&help.whelplayout.get()!=null) {
+                                    removeContentView(help.whelplayout.get()); //setContentView makes view inaccessable
+                                    help.whelplayout=null;
+                                    }
+                                }));
+                    return false;
                     }
-                requestPermissions(noperm, BLUETOOTH_PERMISSION_REQUEST_CODE);
-                });
-                break;
-                }
-            else   {
-                requestPermissions( noperm, BLUETOOTH_PERMISSION_REQUEST_CODE);
-                break;
-                }
-            }
-            });
+               else {
+                   return systemlocation() ;
+                   }
+           }
+        queuePermissionRequest(BLUETOOTH_PERMISSION_REQUEST_CODE, () -> {
+                boolean giveRational=false;
+                if(Build.VERSION.SDK_INT==29||Build.VERSION.SDK_INT==30)
+                    giveRational=true;
+                else {
+                    for(var scanpermission:noperm) {
+                        if(shouldShowRequestPermissionRationale(scanpermission)) {
+                            giveRational=true;
+                            }
+                       }
+                      }
+                if(giveRational) {
+                        gaverational=true;
+                        help.help(Build.VERSION.SDK_INT>30?R.string.nearbypermission:R.string.locationpermission,act,l-> {
+                                Log.i(LOG_ID,"request permission "+noperm);
+                                requestPermissions(noperm, BLUETOOTH_PERMISSION_REQUEST_CODE);
+                                if(help.whelplayout!=null&&help.whelplayout.get()!=null) {
+                                    removeContentView(help.whelplayout.get()); //setContentView makes view inaccessable
+                                    help.whelplayout=null;
+                                    }
+                                });
+                        }
+                    else   {
+                        requestPermissions( noperm, BLUETOOTH_PERMISSION_REQUEST_CODE);
+                        }
+                    });
 
-        return false;
+
+            return false;
         }
     else
         return true;
     }
-/*
-public static final String[] flashpermissions={ Manifest.permission.CAMERA};
-          
-public int flashpermission() {
-        if (Build.VERSION.SDK_INT >= 23) {
-        var noperm=Applic.hasPermissions( this, flashpermissions);
-        if(noperm.length==0) {
-                useflash(true);
-            return 1;
-            }
-        for(var flashperm:noperm) {
-            if(shouldShowRequestPermissionRationale(flashperm)) {
-                help.help(R.string.flashpermission,this,l-> {
-                if(help.whelplayout!=null&&help.whelplayout.get()!=null) {
-                    removeContentView(help.whelplayout.get()); //setContentView makes view inaccessable
-                    help.whelplayout=null;
-                    }
-                    requestPermissions(noperm, FLASH_PERMISSION_REQUEST_CODE);
-                    });
-                return 0 ;
-                }
-            else   {
-                requestPermissions( noperm, FLASH_PERMISSION_REQUEST_CODE);
-                return 0 ;
-                }
-            }
-       return 1;
-        }
-    else  {
-              useflash(true);
-            return 1;
-            }
-    }
-    */
 
 static public final int SENSOR_PERMISSION_REQUEST_CODE=0x23457;
 static final int FLASH_PERMISSION_REQUEST_CODE=0x11224;
 
 static final int BLUETOOTH_PERMISSION_REQUEST_CODE=0x942365;
+static final int BACKGROUND_LOCATION_REQUEST_CODE=0x942366;
 private static final int NOTIFICATION_PERMISSION_REQUEST_CODE=0x8878;
 
 static public final int REQ_SET_PUSHED_WATCH_FACE_ACTIVE = 1001;
 
+private static final String[] location_background_permission=new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION};
 //private final int STORAGE_PERMISSION_REQUEST_CODE=0x445533;
 private void hasLocationContinue() {
       if(Natives.getusebluetooth())  {
@@ -1451,6 +1669,7 @@ public void onRequestPermissionsResult(int requestCode, String[] permissions, in
     super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     var granted=grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
     Log.i(LOG_ID,"onRequestPermissionsResult("+requestCode+",["+String.join(",",permissions)+"],"+Arrays.toString(grantResults)+") "+(granted?"":"not ")+"granted");
+    try {
     switch (requestCode) {
          case REQ_SET_PUSHED_WATCH_FACE_ACTIVE:
                 if(permissions.length==0&&grantResults.length==0) {
@@ -1463,6 +1682,10 @@ public void onRequestPermissionsResult(int requestCode, String[] permissions, in
                         };
                 break;
          case NOTIFICATION_PERMISSION_REQUEST_CODE: {
+             if(grantResults.length==0) {
+                askedNotify=1;
+                break;
+                }
             if(granted) {
                 if(doLog) {Log.i(LOG_ID,"Notification permission granted");};
                 keeprunning.start(this);
@@ -1474,21 +1697,25 @@ public void onRequestPermissionsResult(int requestCode, String[] permissions, in
                 }
 
              };break;
-/*
-            case FLASH_PERMISSION_REQUEST_CODE: {
-            {if(doLog) {Log.i(LOG_ID,"FLASH_PERMISSION_REQUEST_CODE");};};
-            if (granted) {
-                useflash(true);
-            } else {
-                {if(doLog) {Log.i(LOG_ID,"Flash denied");};};
-                useflash(false);
-                }
-            } return; */
+        case BACKGROUND_LOCATION_REQUEST_CODE:
+                if(systemlocation()) {
+                   hasLocationContinue();
+                   return;
+                   }
+               break;
         case BLUETOOTH_PERMISSION_REQUEST_CODE:
             {if(doLog) {Log.i(LOG_ID,"onRequestPermissionsResult(BLUETOOTH_PERMISSION_REQUEST_CODE) "+granted);};};
+            // Permission callbacks are a deliberate refresh boundary. Re-read the
+            // permission state once here; BLE operations use only the cached result.
+            BleMirror.permissionsChanged();
             if(granted) {
-                if(systemlocation())
-                   hasLocationContinue();
+              if((Build.VERSION.SDK_INT==29||Build.VERSION.SDK_INT==30)&&ContextCompat.checkSelfPermission(this, location_background_permission[0])!= PackageManager.PERMISSION_GRANTED) {
+                        queuePermissionRequest(BACKGROUND_LOCATION_REQUEST_CODE, ()->requestPermissions(location_background_permission, BACKGROUND_LOCATION_REQUEST_CODE));
+                    }
+               else {
+                    if(systemlocation())
+                       hasLocationContinue();
+                    }
             } else {
                 {if(doLog) {Log.i(LOG_ID,"denied");};};
                 //setbluetoothmain(false);
@@ -1521,6 +1748,10 @@ public void onRequestPermissionsResult(int requestCode, String[] permissions, in
                 }
             return;
     }
+    }
+    finally {
+        permissionFinished(requestCode);
+        }
 }
 
 
@@ -1582,21 +1813,6 @@ protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
     Log.format("Main.onActivityResult requestCode%x resultCode=%d\n",requestCode,resultCode);
     switch(requestCode) {
-   /*
-         case REQUEST_CHECK_SETTINGS:
-             switch (resultCode) {
-                 case Activity.RESULT_OK:
-                     // All required changes were successfully made
-                     {if(doLog) {Log.i(LOG_ID,"REQUEST_CHECK_SETTINGS OK");};};
-                     hasLocationContinue();
-                     break;
-                 case Activity.RESULT_CANCELED:
-                     // The user was asked to change settings, but chose not to
-                     {if(doLog) {Log.i(LOG_ID,"REQUEST_CHECK_SETTINGS CANCELLED");};};
-                     Applic.Toaster("Location is turned off, can't scan for devices");
-                     break;
-                 default: break;
-             }; break; */
         case OVERLAY_PERMISSION_REQUEST_CODE: {
             {if(doLog) {Log.i(LOG_ID, "OVERLAY_PERMISSION_REQUEST_CODE ");};};
             if(Floating.cannotoverlay()  ) {
@@ -1820,7 +2036,7 @@ boolean backinapp()  {
          curve.render.stepresult = 0;
          curve.render.badscan=0;
          hideSystemUI();
-         if(Menus.on)
+         if(!isWearable&&Menus.on)
             Menus.show(this);
          else
             curve.requestRender(); 
@@ -2154,11 +2370,112 @@ int mirrorlistcolor=-1;
 // un diálogo Java con teclado abierto encima del ComposeView.
 private static int wrapContentOverlayCount = 0;
 
+private static final Set<TextView> selectableViews =
+        Collections.newSetFromMap(new WeakHashMap<>());
+private static final Set<RecyclerView> selectableRecyclerViews =
+        Collections.newSetFromMap(new WeakHashMap<>());
+
+/*
+ * setTextIsSelectable(true) is the only Android-supported way to obtain the
+ * normal selection handles and framework Copy action on a TextView.  Do this
+ * once for each TextView.  For controls that were already clickable, keep a
+ * short tap reliable by translating ACTION_UP into performClick(); long press
+ * remains entirely with TextView's native selection implementation.
+ */
+private static void keepNormalClick(TextView text) {
+    final int touchSlop =
+            ViewConfiguration.get(text.getContext()).getScaledTouchSlop();
+    final int longPressTimeout = ViewConfiguration.getLongPressTimeout();
+
+    text.setOnTouchListener(new View.OnTouchListener() {
+        float downX, downY;
+        boolean moved;
+
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downX = event.getX();
+                    downY = event.getY();
+                    moved = false;
+                    return false;
+
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = event.getX() - downX;
+                    float dy = event.getY() - downY;
+                    if (dx * dx + dy * dy > (float) touchSlop * touchSlop)
+                        moved = true;
+                    return false;
+                }
+
+                case MotionEvent.ACTION_UP:
+                    if (!moved &&
+                        event.getEventTime() - event.getDownTime() < longPressTimeout) {
+                        v.cancelLongPress();
+                        v.setPressed(false);
+                        if (v.isEnabled())
+                            v.performClick();
+                        return true;
+                    }
+                    return false;
+
+                case MotionEvent.ACTION_CANCEL:
+                    moved = true;
+                    return false;
+            }
+            return false;
+        }
+    });
+}
+
+private static void makeTextSelectable(View view) {
+    if (view instanceof TextView && !(view instanceof EditText)) {
+        TextView text = (TextView) view;
+
+        if (selectableViews.add(text)) {
+            /* Read before setTextIsSelectable(), because that method itself
+             * makes a TextView clickable. */
+            boolean wasClickable = text.isClickable();
+
+            text.setTextIsSelectable(true);
+
+            if (wasClickable)
+                keepNormalClick(text);
+        }
+        return;
+    }
+
+    if (view instanceof RecyclerView) {
+        RecyclerView recycler = (RecyclerView) view;
+        if (selectableRecyclerViews.add(recycler)) {
+            recycler.addOnChildAttachStateChangeListener(
+                    new RecyclerView.OnChildAttachStateChangeListener() {
+                @Override
+                public void onChildViewAttachedToWindow(View child) {
+                    if(Applic.DynamicTheme)
+                        DynamicThemeUtils.applyTheme(child);
+                    makeTextSelectable(child);
+                }
+
+                @Override
+                public void onChildViewDetachedFromWindow(View child) {
+                }
+            });
+        }
+    }
+
+    if (view instanceof ViewGroup) {
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); ++i)
+            makeTextSelectable(group.getChildAt(i));
+    }
+}
+
 public static void addMyContentView(Activity context, View view, ViewGroup.LayoutParams params) {
     context.addContentView(view, params);
-    // Aplicar el tema Juggluco a los botones de los diálogos Java en ambos paths.
     if (Applic.DynamicTheme)
         DynamicThemeUtils.applyTheme(view);
+    makeTextSelectable(view);
     if (Applic.useVicoChart()) {
         if (params.width  == ViewGroup.LayoutParams.MATCH_PARENT
          && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
@@ -2173,18 +2490,7 @@ public static void addMyContentView(Activity context, View view, ViewGroup.Layou
 }
 
 public void addMyContentView(View view, ViewGroup.LayoutParams params) {
-    addContentView(view, params);
-    // Aplicar el tema Juggluco a los botones de los diálogos Java en ambos paths.
-    if (Applic.DynamicTheme)
-        DynamicThemeUtils.applyTheme(view);
-    if (Applic.useVicoChart()) {
-        if (params.width  == ViewGroup.LayoutParams.MATCH_PARENT
-         && params.height == ViewGroup.LayoutParams.MATCH_PARENT) {
-            ensureOpaqueBackground(view);
-            applyInsetsToOverlay(view);
-        } else {
-            activateAdjustPan(this, view);
-        }
+    addMyContentView(this, view, params);
     }
 }
 
@@ -2318,6 +2624,28 @@ public static void showVicoScanResult(MainActivity act) {
         dismiss.run();
     });
 }
+
+public boolean canForceMenuLandscape(Configuration config) {
+    final boolean largeScreen=testPortrait || config.smallestScreenWidthDp >= 600;
+    final boolean android16LargeScreen=testPortrait || hasAndroid16LargeScreenRestriction();
+    return !(largeScreen && android16LargeScreen);
+    }
+
+
+public  Point getWindowSize() {
+    final MainActivity act=this;
+    Point size;
+    if (Build.VERSION.SDK_INT >= 30) {
+        Rect bounds = act.getWindowManager().getCurrentWindowMetrics().getBounds();
+        size=new Point(bounds.width(), bounds.height());
+        }
+    else {
+            size = new Point();
+            act.getWindowManager().getDefaultDisplay().getRealSize(size);
+            }
+    GlucoseCurve.setgeo(size.x,size.y);
+    return size;
+   }
 
 }
 

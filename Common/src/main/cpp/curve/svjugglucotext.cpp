@@ -66,12 +66,12 @@ jugglucotext svtext {
 	.duration="Varaktighet: %.1f dagar",
 	.timeactive="Aktiv %.1f%% av tiden",
 	.nrmeasurement="Antal mätningar: %d",
-	.EstimatedA1C="Beräknat A1C: %.1f%% (%d mmol/mol)",
+	.EstimatedA1C="uGMI ≈ Beräknat A1C: %.1f%% (%d mmol/mol)",
 	.GMI="Glucose Management Indicator: %.1f%% (%d mmol/mol)",
 	.SD="SD: %.2f",
 	.glucose_variability="Glukos varians: %.1f%%",
      .menustr0={
-		"System UI",
+		"ChatGPT",
 		"Menyer",
 		"Klocka",
 		"Sensor",
@@ -101,7 +101,7 @@ jugglucotext svtext {
 		},
 
 	.menustr2= {
-    "Senaste skanning",
+    "System UI",
     "Skanningar",
     "Strömmade",
     "Historik",

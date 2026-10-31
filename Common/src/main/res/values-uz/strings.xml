@@ -200,7 +200,7 @@
     <string name="getaccountidmessage">Ushbu Libreview hisobida Abbott Libre3 ilovasi bilan faollashtirilgan Libre3 sensorlaridan foydalanish uchun Account ID kerak.</string>
     <string name="deleteconnection">Ulanish o\'chirilsinmi?</string>
     <string name="wakelock">Wakelock</string>
-    <string name="wifi">WiΓÇæFi</string>
+    <string name="wifi">Wi‑Fi</string>
     <string name="heartrate">Yurak urishi</string>
     <string name="xdripbroadcast">xDrip uzatishi</string>
     <string name="sensorpermission">Sensorlar ruxsati</string>
@@ -216,8 +216,6 @@
     <string name="transparent">Shaffof</string>
     <string name="touchable">Tegiladigan</string>
     <string name="overlaypermission">Ruxsat kerak</string>
-    <string name="overlaypermissionmessage">adb shell pm grant tk.glucodata android.permission.SYSTEM_ALERT_WINDOW</string>
- https://www.juggluco.nl/Jugglucohelp/floatingconfig.html
  <string name="deletereminder">Eslatma o\'chirilsinmi?</string>
     <string name="deletelabel">Yorliq o\'chirilsinmi?</string>
     <string name="finish">Tugatish</string>
@@ -346,7 +344,7 @@
     <string name="glucoseshortcomplicationlabel">Kichik qiymat + strelka</string>
     <string name="text">Matn</string>
     <string name="arrow">Strelka</string>
-    <string name="notalldata">OGOHLANTIRISH: ΓÇ£Receive fromΓÇ¥ o\'rnatilmagan, lekin ayrim ma\'lumot turlari yuborilmayapti.</string>
+    <string name="notalldata">OGOHLANTIRISH: “Receive from” o\'rnatilmagan, lekin ayrim ma\'lumot turlari yuborilmayapti.</string>
     <string name="libresetalllabels">Avval har bir yorliq uchun u bilan nima qilish kerakligini ko\'rsating.</string>
     <string name="photo">Foto</string>
     <string name="photomessage">Dexcom G7/ONE+ yoki Sibionics GS1 sensori data matrixini yoki mirror QR kodini skanerlang.</string>
@@ -358,7 +356,7 @@
 WIFI va Bluetooth yoqilganmi?</string>
     <string name="connected">Ulandi!</string>
     <string name="useclose">Yopish tugmasi</string>
-    <string name="alarmclock">ΓÅ░</string>
+    <string name="alarmclock">⏰</string>
     <string name="filesize">Fayl hajmi</string>
     <string name="logging">Jurnal</string>
     <string name="aspart">Insulin Aspart/NovoRapid/NovoLog</string>
@@ -396,7 +394,7 @@ WIFI va Bluetooth yoqilganmi?</string>
     <string name="scantranstitle">TRANSMITTER data matrixini skanerlang</string>
     <string name="scantransmessage">Sibionics 2 sensori data matrixi muvaffaqiyatli skanerlandi. 
 Endi transmitter data matrixini skanerlang."</string>
-    <string name="mirrorscansucces">Ulanish chap o\'rta menyuΓåÆMirror ga muvaffaqiyatli qo\'shildi.</string>
+    <string name="mirrorscansucces">Ulanish chap o\'rta menyu→Mirror ga muvaffaqiyatli qo\'shildi.</string>
     <string name="resettitle">Qayta o\'rnatish</string>
     <string name="resetmessage">Transmitter xotirasini tozalaydi. Oldin ishlatilgan transmitterda yangi sensordan foydalanishdan avval bosilishi kerak.</string>
     <string name="nolibrelink">Buning o\'rniga EverSense Broadcast dan foydalaning. Yordamni ko\'ring.</string>
@@ -452,7 +450,7 @@ Endi transmitter data matrixini skanerlang."</string>
     <string name="failed">muvaffaqiyatsiz</string>
     <string name="successful">muvaffaqiyatli</string>
     <string name="use">Faollashtirish</string>
-    <string name="connecttosensor">Sensorga ulanmoqdaΓÇª</string>
+    <string name="connecttosensor">Sensorga ulanmoqda…</string>
     <string name="clear">Tozalash</string>
     <string name="clearingmemory">Sensor xotirasi tozalanmoqda</string>
     <string name="clearmessage">Sensor qayta ishga tushirilsinmi? Sensor xotirasi tozalansinmi?</string>
@@ -470,19 +468,19 @@ Endi transmitter data matrixini skanerlang."</string>
     <string name="webuploadfiles">Fayllarni yuklash</string>
     <string name="webuploaddirectory">Katalogni yuklash</string>
     <string name="webup">Yuqoriga</string>
-    <string name="webcantaccessdirectory">%1$s katalogiga kirib boΓÇÿlmadi</string>
-    <string name="webcantcreatedirectory">%1$s yaratib boΓÇÿlmadi</string>
-    <string name="webcantopenfileselector">Fayl tanlash oynasini ochib boΓÇÿlmadi</string>
-    <string name="webcantopendirectoryselector">Katalog tanlash oynasini ochib boΓÇÿlmadi</string>
+    <string name="webcantaccessdirectory">%1$s katalogiga kirib bo‘lmadi</string>
+    <string name="webcantcreatedirectory">%1$s yaratib bo‘lmadi</string>
+    <string name="webcantopenfileselector">Fayl tanlash oynasini ochib bo‘lmadi</string>
+    <string name="webcantopendirectoryselector">Katalog tanlash oynasini ochib bo‘lmadi</string>
     <string name="webinvaliddirectory">%1$s katalogi yaroqsiz</string>
-    <string name="webuploadingfiles">Fayllar yuklanmoqdaΓÇª</string>
-    <string name="webuploadingdirectory">Katalog yuklanmoqdaΓÇª</string>
+    <string name="webuploadingfiles">Fayllar yuklanmoqda…</string>
+    <string name="webuploadingdirectory">Katalog yuklanmoqda…</string>
     <string name="webuploadresult">Yuklangan fayllar: %1$d; kataloglar: %2$d; muvaffaqiyatsiz: %3$d</string>
-    <string name="webdeletefilequestion">ΓÇ£%1$sΓÇ¥ fayli oΓÇÿchirilsinmi?</string>
-    <string name="webdeletedirectoryquestion">ΓÇ£%1$sΓÇ¥ katalogi va uning ichidagi hamma narsa oΓÇÿchirilsinmi?</string>
-    <string name="webdeleting">%1$s oΓÇÿchirilmoqdaΓÇª</string>
-    <string name="webdeleted">%1$s oΓÇÿchirildi</string>
-    <string name="webdeletefailed">%1$s ni oΓÇÿchirib boΓÇÿlmadi</string>
-    <string name="webdirectoryempty">Bu katalog boΓÇÿsh</string>
+    <string name="webdeletefilequestion">“%1$s” fayli o‘chirilsinmi?</string>
+    <string name="webdeletedirectoryquestion">“%1$s” katalogi va uning ichidagi hamma narsa o‘chirilsinmi?</string>
+    <string name="webdeleting">%1$s o‘chirilmoqda…</string>
+    <string name="webdeleted">%1$s o‘chirildi</string>
+    <string name="webdeletefailed">%1$s ni o‘chirib bo‘lmadi</string>
+    <string name="webdirectoryempty">Bu katalog bo‘sh</string>
     <string name="webdirectoryentry">[katalog] %1$s</string>
 </resources>

@@ -95,8 +95,10 @@ static public void reconnectall() {
    if(wasblue !=null) {
        boolean shouldnotscan=true;
        final var now=System.currentTimeMillis();
+       long delay=0;
         for(var cb: wasblue.gattcallbacks)     {
-            shouldnotscan=(cb.reconnect(now)&&shouldnotscan);
+            shouldnotscan=(cb.reconnect(now,delay)&&shouldnotscan);
+            delay+=1000;
             }
        if(!shouldnotscan)  {
             if(mBluetoothManager!=null) {
@@ -427,6 +429,8 @@ static public void sensorEnded(String str) {
    if(blueone!=null)  {
       blueone.removeDevice(str) ;
       }
+   // Garmin Direct can own the sensor while blueone is null.
+   SensorLifecycle.ended(str);
     }
 
 
@@ -685,7 +689,26 @@ public void refreshNamedDevice(String id) {
             }
           }
         } */
-public boolean connectDevices(long delayMillis) {
+
+
+
+private boolean checkandconnectNoScan(SuperGattCallback  cb,long delay) {
+    if(doLog) {Log.i(LOG_ID,"checkandconnectNoScan("+cb.SerialNumber+","+ delay+")");};
+    if(cb.mActiveDeviceAddress != null) {
+        if(BluetoothAdapter.checkBluetoothAddress(cb.mActiveDeviceAddress)) {
+            {if(doLog) {Log.i(LOG_ID, cb.SerialNumber+" checkBluetoothAddress(" +cb.mActiveDeviceAddress +") succeeded");};};
+            cb.mActiveBluetoothDevice = mBluetoothAdapter.getRemoteDevice(cb.mActiveDeviceAddress);
+            cb.connectDevice(delay);
+            return false;
+             }
+       if(doLog) {Log.i(LOG_ID, cb.SerialNumber+" checkBluetoothAddress(" +cb.mActiveDeviceAddress +") failed");};
+       cb.setDeviceAddress(null);
+       }
+    return true;
+    }
+
+
+private boolean connectDevices(long delayMillis) {
     Log.i(LOG_ID,"connectDevices "+delayMillis);
     if(!bluetoothIsEnabled()) {
         Applic.Toaster(R.string.enable_bluetooth);
@@ -693,9 +716,11 @@ public boolean connectDevices(long delayMillis) {
         }
     boolean scan=false;
     for(var cb: gattcallbacks)    {
-        if(checkandconnect( cb,delayMillis))
+        if(checkandconnectNoScan(cb,delayMillis))
             scan=true;
-    }
+       else
+           delayMillis+=1000;
+        }
     if(scan) {
         return scanStarter(delayMillis);
     }
@@ -788,13 +813,14 @@ boolean updateDevicers() {
     }
 
 static boolean updateDevices() {
+    SensorLifecycle.changed();
     if(blueone==null) {
         return false;
         }
     return  blueone.updateDevicers();
     }
 
-boolean checkandconnect(SuperGattCallback  cb,long delay) {
+private boolean checkandconnect(SuperGattCallback  cb,long delay) {
     if(doLog) {Log.i(LOG_ID,"checkandconnect("+cb.SerialNumber+","+ delay+")");};
     if(cb.mActiveDeviceAddress != null) {
         if(BluetoothAdapter.checkBluetoothAddress(cb.mActiveDeviceAddress)) {
@@ -886,6 +912,7 @@ private boolean resetDevicer(long streamptr,String name) {
     }
 
 static public boolean resetDeviceOrFree(long ptr,String name) {
+    SensorLifecycle.added(name);
     if(blueone!=null) {
         return blueone.resetDevicer(ptr,name);
         }
@@ -917,6 +944,7 @@ private boolean resetDevicer(String str,long[] ptrptr) {
     }
 
 static public boolean resetDevice(String str) {
+    SensorLifecycle.added(str);
     long[] ptrptr={0L};
     var ret=resetDevicePtr(str,ptrptr);
     SuperGattCallback.glucosealarms.setLossAlarm();

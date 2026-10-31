@@ -99,12 +99,12 @@ jugglucotext frtext {
 	.duration="Durée: %.1f jours",
 	.timeactive="actif %.1f%% du temps",
 	.nrmeasurement="Nombre de mesures: %d",
-	.EstimatedA1C="HbA1c estimé: %.1f%% (%d mmol/mol)",
+	.EstimatedA1C="uGMI ≈ HbA1c estimé: %.1f%% (%d mmol/mol)",
 	.GMI="Indicateur de gestion du glucose: %.1f%% (%d mmol/mol)",
 	.SD="SD: %.2f",
 	.glucose_variability="Variabilité glycémique: %.1f%%",
      	.menustr0={
-		"Intf. système",
+		"ChatGPT",
 		"Menus",
 		"Montre",
 		"Capteur",
@@ -130,7 +130,7 @@ jugglucotext frtext {
 		"Parler",
 		"Flotter"
 		},
-	.menustr2= {"Dernier scan", "Scans","Flux","Historique","Quantités","Repas","Mode sombre"},
+	.menustr2= {"Intf. système", "Scans","Flux","Historique","Quantités","Repas","Mode sombre"},
 	.menustr3= {hourminstr,"Rechercher","Date","Jour avant","Jour après","Semaine avant","Semaine après"},
 #endif //INJUGGLUCO
 #else

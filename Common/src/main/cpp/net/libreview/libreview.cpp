@@ -20,6 +20,7 @@
 
 
 #ifndef WEAROS
+#define LOGLIBRE 1
 #include <memory>
 #include <string_view>
 #include <array>
@@ -386,7 +387,7 @@ extern bool hour24clock;
     }
 
 
-static bool putsensor(bool libre3,const char *sensorid);
+static int putsensor(bool libre3,const char *sensorid,int kind);
 bool putwhenneeded(bool libre3,SensorGlucoseData *sensdata) {
     if(!sensdata) {
         return true;
@@ -395,10 +396,16 @@ bool putwhenneeded(bool libre3,SensorGlucoseData *sensdata) {
         time_t nu=time(nullptr)    ;
         const char *sensorid= sensdata->showsensorname().data();
         if(nu<sensdata->officialendtime()) {
-            if(!(sensdata->getinfo()->putsensor=putsensor(libre3,sensorid))) {
+            int kind=0;
+            do {
+                   kind=putsensor(libre3,sensorid,kind);
+                    } while(kind>0);
+            
+            if(kind<0) {
                 LIBRELOGGER("putsensor %s failed\n",sensorid);
                 return false;
                 }
+            sensdata->getinfo()->putsensor=true;
             LIBRELOGGER("putsensor %s succeeded\n",sensorid);
             return true;
             }
@@ -877,8 +884,12 @@ void initlibreviewjni(JNIEnv *env) {
           }
        }
 static bool initlibreconfig(bool libre3,bool restart) {
-    static jmethodID  libreconfig=getenv()->GetStaticMethodID(libreviewclass,"libreconfig","(ZZ)Z");
+    static const jmethodID  libreconfig=getenv()->GetStaticMethodID(libreviewclass,"libreconfig","(ZZ)Z");
     return   getenv()->CallStaticBooleanMethod(libreviewclass,libreconfig,libre3,restart);
+    }
+static bool retrieveLibreReceiverID() {
+    static const jmethodID  retrievefunc=getenv()->GetStaticMethodID(libreviewclass,"retrieveLibreReceiverID","()Z");
+    return   getenv()->CallStaticBooleanMethod(libreviewclass,retrievefunc);
     }
 /*
 static bool putsensor(const char *sensorid) {
@@ -889,11 +900,11 @@ static bool putsensor(const char *sensorid) {
         env->DeleteLocalRef(jsensorid);
     return res;
     } */
-static bool putsensor(bool libre3,const char *sensorid) {
+static int putsensor(bool libre3,const char *sensorid,int kind) {
     JNIEnv *env=getenv();
-    static jmethodID  putsensor=env->GetStaticMethodID(libreviewclass,"putsensor","(Z[B)Z");
+    static jmethodID  putsensor=env->GetStaticMethodID(libreviewclass,"putsensor","(Z[BI)I");
     jbyteArray message=libre3?getlibre3puttext(env, sensorid):getlibre2puttext(env, sensorid);
-    bool res=env->CallStaticBooleanMethod(libreviewclass,putsensor,libre3,message); 
+    int res=env->CallStaticIntMethod(libreviewclass,putsensor,libre3,message,kind); 
     env->DeleteLocalRef(message);
     return res;
     }
@@ -1064,6 +1075,14 @@ void libreviewthread() {
                         }
                     LIBRELOGGER("initlibreconfig success %d\n",settings->data()->libreinit3);
                     alwaysnewstatus3=false;
+                    }
+
+                if(!settings->data()->newLibre3ReceiverIDreceived) {
+                    LIBRELOGAR("!newLibre3ReceiverIDreceived\n");
+                    if(retrieveLibreReceiverID()) {
+                        LIBRELOGAR("retrieveLibreReceiverID successful");
+                       // settings->data()->newLibre3ReceiverIDreceived=true;
+                        }
                     }
                 if(!settings->data()->sendtolibreview) {
                     askforaccount=false;
@@ -1332,6 +1351,9 @@ extern "C" JNIEXPORT void  JNICALL   fromjava(setuselibreview)(JNIEnv *env, jcla
         }
 //    else endlibrethread();
     }
+void setAskForAccount() {
+       askforaccount=true;
+       }
 
 extern "C" JNIEXPORT void  JNICALL   fromjava(askServerforAccountID)(JNIEnv *env, jclass cl) {
     alwaysnewstatus=true;
@@ -1358,7 +1380,7 @@ std::string_view getjstring(JNIEnv *env,jstring jstr)  {
     return {strbuf,strlen};
     }
 //extern "C" JNIEXPORT void JNICALL fromjava(setDevice) (JNIEnv *env, jclass clazz, jstring jMANUFACTURER, jstring jMODEL, jstring jRELEASE) { 
-extern "C" JNIEXPORT void JNICALL fromjava(setDevice) (JNIEnv *env, jclass clazz, jstring jMANUFACTURER, jstring jMODEL, int SDK_INTin) { 
+extern "C" JNIEXPORT void JNICALL fromjava(saveDevice) (JNIEnv *env, jclass clazz, jstring jMANUFACTURER, jstring jMODEL, jstring jPRODUCT,int SDK_INTin) { 
     LIBRELOGAR("setDevice");
     if(jMANUFACTURER) {
         delete[] dMANUFACTURER.data(); //Ever called twice?

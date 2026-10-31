@@ -73,7 +73,7 @@ fun VicoNightscoutFollowerDialog(onDismiss: () -> Unit) {
     var serverActive by remember { mutableStateOf(Natives.getusexdripwebserver()) }
     var localOnly    by remember { mutableStateOf(Natives.getXdripServerLocal()) }
     var useSSL       by remember { mutableStateOf(Natives.getuseSSL()) }
-    var treatments   by remember { mutableStateOf(Natives.getsaytreatments()) }
+    var treatments   by remember { mutableStateOf(Natives.getGiveAmounts()) }
     val nightError   = remember { Natives.nightError() }
 
     Dialog(
@@ -158,7 +158,7 @@ fun VicoNightscoutFollowerDialog(onDismiss: () -> Unit) {
                     if (err == null) useSSL = it
                     else Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                 }
-                FollowerSwitchRow("Enviar tratamientos",   treatments)    { treatments = it; Natives.setsaytreatments(it) }
+                FollowerSwitchRow("Enviar tratamientos",   treatments)    { treatments = it; Natives.setGiveAmounts(it) }
 
                 Spacer(Modifier.height(4.dp))
                 Text(

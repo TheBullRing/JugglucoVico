@@ -168,23 +168,8 @@ static void showsensormessage(String text,MainActivity act) {
          });
 
     var  params = new FrameLayout.LayoutParams( WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER| Gravity.CENTER_HORIZONTAL);
-//    params.topMargin=MainActivity.systembarTop;
     act.addMyContentView(layout, params);
     }
-/*
-public static void showsensorinfo(String text,MainActivity act) {
-       var width=GlucoseCurve.getwidth();
-        help.basehelp(text,act,xzy->{
-        }, (l,w,h)-> {
-                var height=GlucoseCurve.getheight();
-                if(height>h)
-                    l.setY((height-h)/2);
-                if(width>w)
-                    l.setX((width-w)/2);
-            return new int[] {w,h};
-            }, new ViewGroup.MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT));
-        }
-*/
 void showinfo(final SuperGattCallback gatt,MainActivity act) {
     if(isWearable)  {
         disconnectsensor.setVisibility(gatt.sensorgen==3?VISIBLE:GONE);
@@ -193,11 +178,10 @@ void showinfo(final SuperGattCallback gatt,MainActivity act) {
        streamhistory.setVisibility(VISIBLE);
       alarmclock.setVisibility(GONE);
       resetbutton.setVisibility(GONE);
-      divorcebutton.setVisibility(GONE);
         }
     else  {
       streamhistory.setVisibility(GONE);
-      alarmclock.setVisibility(gatt.sensorgen==0x30||gatt.sensorgen==0x40?VISIBLE:GONE);
+      alarmclock.setVisibility(gatt.sensorgen==3||gatt.sensorgen==0x30||gatt.sensorgen==0x40?VISIBLE:GONE);
       final boolean resetvis=gatt.sensorgen==0x10&&Natives.getSiSubtype(gatt.dataptr)==3;
       resetbutton.setVisibility(resetvis?VISIBLE:GONE);
       }
@@ -233,7 +217,7 @@ void showinfo(final SuperGattCallback gatt,MainActivity act) {
         rssiview.setVisibility(VISIBLE);
     } else {
         rssiview.setText("");
-        rssiview.setVisibility(GONE);
+        rssiview.setVisibility(isWearable?INVISIBLE:GONE);
        }
          
     if(forget!=null)  {
@@ -403,50 +387,94 @@ help.setOnClickListener(v-> helplight(R.string.sensorhelp,act));
     act.addMyContentView(layout, params);
 
    }
-   /*
-void nogatts(MainActivity act) {
- var bluestate= getlabel(act, mBluetoothAdapter==null?activity.getString(R.string.nobluetooth):(mBluetoothAdapter.isEnabled()?activity.getString(R.string.bluetoothenabled): activity.getString(R.string.bluetoothdisabled)));
- final boolean wasused= Natives.getusebluetooth();
- var usebluetooth=getcheckbox(act, R.string.use_bluetooth,wasused);
-    usebluetooth.setOnCheckedChangeListener(
-         (buttonView,  isChecked) -> {
-             {if(doLog) {Log.i(LOG_ID,"usebluetooth "+isChecked);};};
-             if(isChecked!=wasused) {
-                 act.setbluetoothmain( isChecked);
-                 act.requestRender();
-                 act.doonback();
-                 start(act);
-             }
-         });
-    var close=getbutton(act,R.string.closename);
-   var height=GlucoseCurve.getheight();
-   var width=GlucoseCurve.getwidth();
-   if(!useclose)
-      close.setVisibility(GONE);
-  Layout layout = new Layout(act, (l, w, h) -> {
-      l.setX((width-w)/2);
-      l.setY((height-h)/2);
-        int[] ret={w,h};
-        return ret;
-        },new View[]{bluestate},new View[]{usebluetooth},new View[]{close});
-    act.setonback(() -> {
-            removeContentView(layout);
-            });
+/*
+private static boolean phonePortrait(View view) {
+    // The overlay itself is not recreated when MainActivity handles rotation.
+    // Prefer the current visible window and use Configuration as fallback.
+    if(view!=null) {
+        View root=view.getRootView();
+        if(root!=null && root.getWidth()>0 && root.getHeight()>0) {
+            android.graphics.Rect visible=new android.graphics.Rect();
+            root.getWindowVisibleDisplayFrame(visible);
+            if(visible.width()>0 && visible.height()>0)
+                return visible.height()>visible.width();
+            return root.getHeight()>root.getWidth();
+        }
+    }
+    return view.getResources().getConfiguration().orientation==
+            android.content.res.Configuration.ORIENTATION_PORTRAIT;
+}
+*/
+/*
+ * Do not reuse MainActivity.systembarLeft/... here.  Those values can still
+ * describe the previous orientation while this overlay remains alive.  The
+ * visible display frame belongs to the window in its current orientation.
+ */
+ /*
+private static void updatePhoneOverlayParams(View view, FrameLayout.LayoutParams params, boolean portrait) {
+    if(view==null || params==null)
+        return;
+    View root=view.getRootView();
+    if(root==null || root.getWidth()<=0 || root.getHeight()<=0)
+        return;
 
-        close.setOnClickListener(v -> {
-         act.doonback();
-         });
-      layout.setBackgroundResource(R.drawable.dialogbackground);
-    int pads=(int)(GlucoseCurve.metrics.density*(isWearable?2:10));
-   {if(doLog) {Log.i(LOG_ID,"density="+GlucoseCurve.metrics.density);};};
+    android.graphics.Rect visible=new android.graphics.Rect();
+    root.getWindowVisibleDisplayFrame(visible);
+    int[] location=new int[2];
+    root.getLocationOnScreen(location);
 
-      if(!isWearable)
-          bluestate.setPadding(pads,0,0,0);
-      layout.setPadding(pads,pads,pads*3,pads);
-   act.addMyContentView(layout, new ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+    int left=Math.max(0,visible.left-location[0]);
+    int top=Math.max(0,visible.top-location[1]);
+    int right=Math.max(0,location[0]+root.getWidth()-visible.right);
+    int bottom=Math.max(0,location[1]+root.getHeight()-visible.bottom);
 
-   }
-   */
+    // Use all available phone width in both orientations.  In landscape this
+    // normally makes the complete diagnostics table visible without scrolling.
+    int newWidth=MATCH_PARENT;
+    int newHeight=WRAP_CONTENT;
+    if(portrait) {
+        int availableHeight=Math.max(1,visible.height());
+        int contentHeight=0;
+        if(view instanceof android.widget.ScrollView) {
+            android.widget.ScrollView scroll=(android.widget.ScrollView)view;
+            if(scroll.getChildCount()>0) {
+                View child=scroll.getChildAt(0);
+                contentHeight=child.getMeasuredHeight();
+                if(contentHeight<=0)
+                    contentHeight=child.getHeight();
+            }
+        }
+        if(contentHeight>0)
+            newHeight=Math.min(contentHeight,availableHeight);
+        else
+            newHeight=availableHeight;
+    }
+
+    int newLeft=portrait?left:(int)(left*.3f);
+    int newTop=portrait?top:(int)(top*.3f);
+    int newRight=portrait?right:(int)(right*.3f);
+    int newBottom=portrait?bottom:(int)(bottom*.3f);
+    int newGravity=portrait?(Gravity.TOP|Gravity.CENTER_HORIZONTAL):
+                            (Gravity.CENTER|Gravity.CENTER_HORIZONTAL);
+
+    if(params.width!=newWidth || params.height!=newHeight ||
+       params.leftMargin!=newLeft || params.topMargin!=newTop ||
+       params.rightMargin!=newRight || params.bottomMargin!=newBottom ||
+       params.gravity!=newGravity) {
+        params.width=newWidth;
+        params.height=newHeight;
+        params.leftMargin=newLeft;
+        params.topMargin=newTop;
+        params.rightMargin=newRight;
+        params.bottomMargin=newBottom;
+        params.gravity=newGravity;
+        view.setLayoutParams(params);
+    }
+}
+*/
+private static int dp(float value) {
+    return (int)(GlucoseCurve.metrics.density*value+0.5f);
+}
 
 bluediag(MainActivity act,final ArrayList<SuperGattCallback> gatts) {
     activity=act;
@@ -469,104 +497,176 @@ bluediag(MainActivity act,final ArrayList<SuperGattCallback> gatts) {
 
            }
 
-    LayoutInflater flater= LayoutInflater.from(act);
-    View view = flater.inflate(R.layout.bluesensor, null, false);
+    LayoutInflater flater=LayoutInflater.from(act);
+    GridLayout diagnosticGrid=(GridLayout)flater.inflate(R.layout.bluesensor,null,false);
 
-    forget=view.findViewById(R.id.forget);
-    scanview=view.findViewById(R.id.scan);
-    starttimeV=view.findViewById(R.id.stage);
-    rssiview=view.findViewById(R.id.rssi);
-    rssiview.setPadding(0,0,0,0);
-      CheckDirectionBox android13=view.findViewById(R.id.android13);
-      if(android13!=null) {
-         android13.setChecked( SuperGattCallback.autoconnect);
-         android13.setOnCheckedChangeListener( (buttonView,  isChecked) -> { SensorBluetooth.setAutoconnect(isChecked); });
-         }
-    info=view.findViewById(R.id.info);
-    {if(doLog) {Log.i(LOG_ID,"info.setVisibility(INVISIBLE);");};};
+    // Only the diagnostic table comes from XML.  Everything else is simpler
+    // to construct directly because Layout owns the actual row arrangement.
+    starttimeV=diagnosticGrid.findViewById(R.id.stage);
+    contimes=new TextView[]{diagnosticGrid.findViewById(R.id.consuccess),
+                            diagnosticGrid.findViewById(R.id.confail)};
+    constatus=diagnosticGrid.findViewById(R.id.constatus);
+    constatus.setTextIsSelectable(true);
+    keytimes=new TextView[]{diagnosticGrid.findViewById(R.id.keysuccess),
+                            diagnosticGrid.findViewById(R.id.keyfailure)};
+    keyinfo=diagnosticGrid.findViewById(R.id.keyinfo);
+    keyinfo.setTextIsSelectable(true);
+    glucosetimes=new TextView[]{diagnosticGrid.findViewById(R.id.glucosesuccess),
+                                diagnosticGrid.findViewById(R.id.glucosefailure)};
+    glucoseinfo=diagnosticGrid.findViewById(R.id.glucoseinfo);
+
+    bluestate=getlabel(act,"");
+    info=getbutton(act,R.string.info);
     info.setVisibility(INVISIBLE);
-    int width2=GlucoseCurve.getwidth();
-    HorizontalScrollView addscroll2=null;
+    final Button finish=isWearable?null:getbutton(act,R.string.finish);
+
+    streamhistory=getcheckbox(act,R.string.streamhistory,Natives.getStreamHistory());
+    alarmclock=getcheckbox(act,R.string.alarmclock,Natives.getalarmclock());
+    alarmclock.setVisibility(GONE);
+    resetbutton=getbutton(act,R.string.resetname);
+    resetbutton.setVisibility(GONE);
+    divorcebutton=getbutton(act,R.string.divorcename);
+    divorcebutton.setVisibility(GONE);
+
+    FrameLayout sensorAction=new FrameLayout(act);
+    FrameLayout.LayoutParams sensorActionParams=new FrameLayout.LayoutParams(WRAP_CONTENT,WRAP_CONTENT);
+    sensorAction.addView(streamhistory,sensorActionParams);
+    sensorAction.addView(alarmclock,new FrameLayout.LayoutParams(WRAP_CONTENT,WRAP_CONTENT));
+    sensorAction.addView(resetbutton,new FrameLayout.LayoutParams(WRAP_CONTENT,WRAP_CONTENT));
+    sensorAction.addView(divorcebutton,new FrameLayout.LayoutParams(WRAP_CONTENT,WRAP_CONTENT));
+
+    scanview=getlabel(act,"");
+    spin=new Spinner(act);
+    address=getlabel(act,"");
+    forget=getbutton(act,R.string.forget);
+    streaming=getlabel(act,"");
+    clear=getbutton(act,R.string.clear);
+
+    usebluetooth=getcheckbox(act,R.string.use_bluetooth,Natives.getusebluetooth());
+    priority=getcheckbox(act,R.string.high_priority,Natives.getpriority());
+    final CheckDirectionBox android13=
+            getcheckbox(act,R.string.android13,SuperGattCallback.autoconnect);
+    android13.setOnCheckedChangeListener(
+            (buttonView,isChecked)->SensorBluetooth.setAutoconnect(isChecked));
+
+    rssiview=getlabel(act,"RSSI");
+   // rssiview.setPadding(0,0,0,0);
+    //rssiview.setTextSize(10.0f);
+
+    final Button close=getbutton(act,R.string.closename);
+    final Button help=isWearable?null:getbutton(act,R.string.helpname);
+    final Button background=isWearable?null:getbutton(act,R.string.dozemode);
+
+    final Layout content;
+    final View showview;
+
     if(isWearable) {
-        HorizontalScrollView scroll= view.findViewById(R.id.hori);
-        scroll.setSmoothScrollingEnabled(false);
-      scroll.setVerticalScrollBarEnabled(false);
-      scroll.setHorizontalScrollBarEnabled(Applic.horiScrollbar);
-      scroll.setScrollBarFadeDuration(0);
-        int height=GlucoseCurve.getheight();
-        scroll.setMinimumHeight(height);
-        {if(doLog) {Log.i(LOG_ID,"height="+height);};};
-        }
-    else {
-        HorizontalScrollView addscroll= view.findViewById(R.id.hori);
-        /*
-       GridLayout grid=view.findViewById(R.id.grid);
-        final var addscroll= new HorizontalScrollView(act);
-//        var  horparams = new FrameLayout.LayoutParams( WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER|Gravity.CENTER_HORIZONTAL);
- //       addscroll.addView(grid,horparams);
-        addscroll.addView(grid);
-*/
-        addscroll.setSmoothScrollingEnabled(false);
-       addscroll.setVerticalScrollBarEnabled(false);
-        addscroll.setHorizontalScrollBarEnabled(Applic.horiScrollbar);
- //       int heightU=GlucoseCurve.getheight();
-//        addscroll.setMinimumHeight(heightU);
-        addscroll2=addscroll;
+        disconnectsensor=getcheckbox(act,R.string.disconnectsensor,Natives.getDisconnectSensor());
+        disconnectsensor.setOnCheckedChangeListener(
+                (buttonView,isChecked)->Natives.setDisconnectSensor(isChecked));
+        clear.setVisibility(GONE);
+        bluestate.setPaddingRelative(0,0,dp(5),0);
+       diagnosticGrid.setLayoutParams( new ViewGroup.MarginLayoutParams(MATCH_PARENT,WRAP_CONTENT));
+             scanview.setLayoutParams( new ViewGroup.MarginLayoutParams(MATCH_PARENT,WRAP_CONTENT));
+        var infoMargins= Layout.getMargins(info);
+        infoMargins.rightMargin= (int)(GlucoseCurve.getwidth()*.1);
+        infoMargins.leftMargin=dp(5);
+        content=new Layout(act,
+                new View[]{bluestate,usebluetooth,sensorAction,priority,disconnectsensor,info},
+                new View[]{scanview},
+                new View[]{spin,address,forget,streaming,clear,android13},
+                new View[]{diagnosticGrid},
+                new View[]{close,rssiview});
+        content.setPadding(dp(30),dp(18),dp(8),dp(30));
 
-         }
+        //androidx.core.widget.NestedScrollView vertical= new androidx.core.widget.NestedScrollView(act);
+        androidx.core.widget.NestedScrollView vertical = new androidx.core.widget.NestedScrollView(act, null, android.R.attr.scrollViewStyle);
+        vertical.addView(content,new ViewGroup.LayoutParams(WRAP_CONTENT,WRAP_CONTENT));
 
-    View showview=addscroll2!=null?addscroll2:view;
+        vertical.setFillViewport(true);
+        vertical.setVerticalScrollBarEnabled(true);
+        vertical.setScrollbarFadingEnabled(false);
 
-    priority=view.findViewById(R.id.priority);
-    streamhistory=view.findViewById(R.id.streamhistory);
-    alarmclock=view.findViewById(R.id.alarmclock);
-    resetbutton=view.findViewById(R.id.resetbutton);
-    divorcebutton=view.findViewById(R.id.divorcebutton);
-    clear=view.findViewById(R.id.clear);
-   alarmclock.setChecked(Natives.getalarmclock());
-if(!isWearable) {
-    Button finish = view.findViewById(R.id.finish);
-    if (gatts != null && gatts.size() > 0) {
-        finish.setOnClickListener(v -> {
-            if (gatts != null && gatts.size() > 0) {
-                if (gattselected >= gatts.size()) {
-                    {if(doLog) {Log.i(LOG_ID, "show: gattselected=" + gattselected);};};
-                    gattselected = 0;
-                    return;
-                }
-                var gat = gatts.get(gattselected);
-                confirmFinish(gat);
-            }
-        });
+        HorizontalScrollView horizontal=new HorizontalScrollView(act);
+
+        horizontal.addView(vertical,new ViewGroup.LayoutParams(MATCH_PARENT,MATCH_PARENT));
+
+        horizontal.setFillViewport(true);
+        horizontal.setSmoothScrollingEnabled(false);
+        horizontal.setVerticalScrollBarEnabled(false);
+        horizontal.setHorizontalScrollBarEnabled(Applic.horiScrollbar);
+        horizontal.setScrollBarFadeDuration(0);
+        horizontal.setMinimumHeight(GlucoseCurve.getheight());
+        showview=horizontal;
+        showview.setBackgroundColor(Applic.backgroundcolor); //??
     }
     else {
+        locationpermission=getbutton(act,R.string.scan_permission);
+        address.setBackgroundColor(BLACK);
 
-        {if(doLog) {Log.i(LOG_ID,"finish.setVisibility(GONE);");};};
-        finish.setVisibility(GONE);
-        }
-    } 
-else {
-   disconnectsensor=view.findViewById(R.id.disconnectsensor);
-   disconnectsensor.setChecked(Natives.getDisconnectSensor());
-   disconnectsensor.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setDisconnectSensor(isChecked) );
-   }
-    if (gatts == null || gatts.size()== 0) {
-        //priority.setVisibility(GONE);
-        forget.setVisibility(GONE);
-        }
-    contimes=new TextView[]{view.findViewById(R.id.consuccess) , view.findViewById(R.id.confail)};
-    constatus=view.findViewById(R.id.constatus);
-    constatus.setTextIsSelectable(true);
-    streaming=view.findViewById(R.id.streaming);
-    address=view.findViewById(R.id.deviceaddress);
-    final int addressrand=(int)tk.glucodata.GlucoseCurve.metrics.density*5;
+        HorizontalScrollView diagnosticScroll=new HorizontalScrollView(act);
+        diagnosticScroll.setFillViewport(false);
+        diagnosticScroll.setSmoothScrollingEnabled(false);
+        diagnosticScroll.setHorizontalScrollBarEnabled(Applic.horiScrollbar);
+        diagnosticScroll.setScrollBarFadeDuration(0);
+        diagnosticScroll.addView(diagnosticGrid,new ViewGroup.MarginLayoutParams(WRAP_CONTENT,WRAP_CONTENT));
+        diagnosticScroll.setLayoutParams( new ViewGroup.MarginLayoutParams(MATCH_PARENT,WRAP_CONTENT));
+
+        content=new Layout(act,
+                new View[]{bluestate,info,finish,sensorAction,locationpermission},
+                new View[]{scanview},
+                new View[]{spin,address,forget,streaming,clear},
+                new View[]{diagnosticScroll},
+                new View[]{help,usebluetooth,background},
+                new View[]{priority,android13,rssiview,close})
+                .portraitLayout(
+                new View[]{bluestate},
+                new View[]{info,finish},
+                new View[]{sensorAction},
+                new View[]{locationpermission},
+                new View[]{scanview},
+                new View[]{spin,address},
+                new View[]{forget,rssiview},
+                new View[]{streaming,clear},
+                new View[]{diagnosticScroll},
+                new View[]{help,usebluetooth},
+                new View[]{background,priority},
+                new View[]{android13,close});
+        content.setPadding(dp(15),dp(9),dp(2),dp(9));
+
+         content.setBackgroundColor(Applic.backgroundcolor);
+        android.widget.ScrollView vertical=new android.widget.ScrollView(act);
+        vertical.setFillViewport(false); 
+        content.systembarMargins();
+        vertical.addView(content,new android.widget.ScrollView.LayoutParams( MATCH_PARENT,WRAP_CONTENT));
+        showview=vertical;
+       }
+
+    final int addressrand=dp(5);
     address.setPaddingRelative(0,0,addressrand,0);
-    keytimes=new TextView[]{view.findViewById(R.id.keysuccess) , view.findViewById(R.id.keyfailure)}; keyinfo=view.findViewById(R.id.keyinfo);
-    keyinfo.setTextIsSelectable(true);
-    glucosetimes=new TextView[]{view.findViewById(R.id.glucosesuccess) , view.findViewById(R.id.glucosefailure)}; glucoseinfo=view.findViewById(R.id.glucoseinfo);
-    bluestate=view.findViewById(R.id.bluestate);
-    usebluetooth=view.findViewById(R.id.usebluetooth);
-   
+
+    {if(doLog) {Log.i(LOG_ID,"info.setVisibility(INVISIBLE);");};};
+
+    if(gatts==null || gatts.size()==0)
+        forget.setVisibility(GONE);
+
+    if(!isWearable) {
+        if(gatts!=null && gatts.size()>0) {
+            finish.setOnClickListener(v -> {
+                if(gattselected>=gatts.size()) {
+                    {if(doLog) {Log.i(LOG_ID,"show: gattselected="+gattselected);};};
+                    gattselected=0;
+                    return;
+                }
+                confirmFinish(gatts.get(gattselected));
+            });
+        }
+        else {
+            {if(doLog) {Log.i(LOG_ID,"finish.setVisibility(GONE);");};};
+            finish.setVisibility(GONE);
+        }
+    }
+
     usebluetooth.setOnCheckedChangeListener(
          (buttonView,  isChecked) -> {
              {if(doLog) {Log.i(LOG_ID,"usebluetooth "+isChecked);};};
@@ -590,21 +690,23 @@ else {
     divorcebutton.setOnClickListener( v -> {
             if(gatts!=null&&gattselected<gatts.size()) {
                 final SuperGattCallback gatt = gatts.get(gattselected);
-                if(gatt.sensorgen!=0x50) {
-                    final String message="ERROR: divorcebutton on sensorgen="+gatt.sensorgen;
-                    Log.i(LOG_ID,message);
-                    Applic.Toaster(message);
-                    }
-                Confirm.ask(act,gatt.SerialNumber,act.getString(R.string.divorcemessage),()-> {
-                    var aid=(AidexXGattCallback)gatt;
-                    aid.startUnpair( new UnpairOverlayHost(act,R.string.releasingsensor),res -> {
-                        aid.finishSensor();
-                        SensorBluetooth.sensorEnded(aid.SerialNumber);
-                        act.requestRender();
-                        return true;
-                        });
-                    act.doonback();
-                 });
+                  {
+                    if(gatt.sensorgen!=0x50) {
+                        final String message="ERROR: divorcebutton on sensorgen="+gatt.sensorgen;
+                        Log.i(LOG_ID,message);
+                        Applic.Toaster(message);
+                        }
+                    Confirm.ask(act,gatt.SerialNumber,act.getString(R.string.divorcemessage),()-> {
+                        var aid=(AidexXGattCallback)gatt;
+                        aid.startUnpair( new UnpairOverlayHost(act,R.string.releasingsensor),res -> {
+                            aid.finishSensor();
+                            SensorBluetooth.sensorEnded(aid.SerialNumber);
+                            act.requestRender();
+                            return true;
+                            });
+                        act.doonback();
+                     });
+                     }
               }
       });
     clear.setOnClickListener( v -> {
@@ -667,7 +769,6 @@ else {
        }
     boolean hasperm=Build.VERSION.SDK_INT < 23||Applic.noPermissions(act).length==0;
     if(!isWearable)  {
-        locationpermission=view.findViewById(R.id.locationpermission);
         if(hasperm)   {
             {if(doLog) {Log.i(LOG_ID,"locationpermission.setVisibility(GONE);");};};
             locationpermission.setVisibility(GONE);
@@ -688,7 +789,6 @@ else {
                 });
             }
         }
-    spin=view.findViewById(R.id.sensors);
    if(isWearable)
       spin.setPopupBackgroundResource(R.drawable.helpbackground);
     boolean[] first={true};
@@ -725,9 +825,7 @@ else {
           setadapter(act,gatts);
         }
     if(!isWearable) {
-         Button help=!isWearable?view.findViewById(R.id.help):null;
         help.setOnClickListener(v-> helplight(R.string.sensorhelp,act));
-         Button background=view.findViewById(R.id.background);
         if(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             background.setOnClickListener(v-> Battery.batteryscreen(act,showview));
             }
@@ -738,24 +836,33 @@ else {
         }
 
 
-     Button close=view.findViewById(R.id.close);
      close.setOnClickListener(v-> act.doonback());
    if(!useclose)
       close.setVisibility(GONE);
 
-      view.setBackgroundColor( Applic.backgroundcolor);
     show(act,showview);
    // act.addMyContentView(showview, new ViewGroup.LayoutParams( WRAP_CONTENT, WRAP_CONTENT));
 
 
 //    var  params = new FrameLayout.LayoutParams( MATCH_PARENT, MATCH_PARENT, Gravity.CENTER|Gravity.CENTER_HORIZONTAL);
-    var  params = new FrameLayout.LayoutParams( WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER|Gravity.CENTER_HORIZONTAL);
-   params.topMargin=(int)(MainActivity.systembarTop*.3f);
-   params.bottomMargin=(int)(MainActivity.systembarBottom*.3f);
-   params.leftMargin=(int)(MainActivity.systembarLeft*.3f);
-   params.rightMargin=(int)(MainActivity.systembarRight*.3f);
+    var  params = new FrameLayout.LayoutParams(isWearable?WRAP_CONTENT:MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER|Gravity.CENTER_HORIZONTAL);
+    if(isWearable) {
+        params.topMargin=(int)(MainActivity.systembarTop*.3f);
+        params.bottomMargin=(int)(MainActivity.systembarBottom*.3f);
+        params.leftMargin=(int)(MainActivity.systembarLeft*.3f);
+        params.rightMargin=(int)(MainActivity.systembarRight*.3f);
+    }
     act.addMyContentView(showview, params);
+/*
+    if(!isWearable) {
+        final View phoneRoot=showview;
+        final FrameLayout.LayoutParams phoneParams=params;
 
+        phoneRoot.addOnLayoutChangeListener((v,left,top,right,bottom, oldLeft,oldTop,oldRight,oldBottom) -> updatePhoneOverlayParams(phoneRoot,phoneParams,phonePortrait(v)));
+
+        phoneRoot.post(() -> updatePhoneOverlayParams( phoneRoot,phoneParams,phonePortrait(phoneRoot)));
+    }
+*/
     var scheduled=Applic.scheduler.scheduleAtFixedRate( ()-> {
        {if(doLog) {Log.i(LOG_ID,"scheduled");};};
         act.runOnUiThread( ()-> { 

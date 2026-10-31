@@ -28,6 +28,7 @@ import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.hardware.display.DisplayManager;
 import android.opengl.GLSurfaceView;
 import android.text.InputType;
 import android.util.DisplayMetrics;
@@ -37,6 +38,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.View;
 import android.view.ViewGroup;
@@ -139,14 +141,53 @@ static   public float smallfontsize;
  final   private GestureDetector mGestureDetector;
     static final int STEPBACK = 1;
     boolean waitnfc = false;
-    MyRenderer render = new MyRenderer();
-    static int height,width;
-
+public    MyRenderer render;
+    static int height=0,width=0;
+    private DisplayManager displayManager;
+    private int lastDisplayRotation=-1;
+    private final boolean reverseDefaultRotation;
+    private final DisplayManager.DisplayListener displayListener=new DisplayManager.DisplayListener() {
+        @Override public void onDisplayAdded(int displayId) {}
+        @Override public void onDisplayRemoved(int displayId) {}
+        @Override public void onDisplayChanged(int displayId) {
+            final android.view.Display display=getDisplay();
+            if(display!=null&&display.getDisplayId()==displayId)
+                updateDisplayRotation(true);
+            }
+        };
 
 
 NumberView  numberview= new NumberView();
 
 Layout numcontrol=null;
+private void removeSearchEditor() {
+    saveSearchEditorState();
+    numberview.hidekeyboard();
+    editfocus.clearedittext(under);
+    editfocus.clearedittext(above);
+    editfocus.clearedittext(mealquantity);
+    if(meallayout!=null) {
+        removeContentView(meallayout);
+        meallayout=null;
+        }
+    if(search!=null) {
+        removeContentView(search);
+        search=null;
+        }
+    under=null;
+    above=null;
+    mealingredient=null;
+    mealquantity=null;
+    searchspinner=null;
+    searchspinadap=null;
+    scansearch=null;
+    historysearch=null;
+    streamsearch=null;
+    streamcalibratedsearch=null;
+    historycalibratedsearch=null;
+    fromtime=null;
+    totime=null;
+    }
 void startsearch() {
 if(!isWearable) {
     MainActivity activity = (MainActivity) getContext();
@@ -154,29 +195,17 @@ if(!isWearable) {
     Natives.stopsearch();
     searchcontrol.setVisibility(View.GONE);
     }
-    if (search == null) {
+    removeSearchEditor();
     search = getsearchlayout(activity);
-    } else {
-    var labels=Natives.getLabels();
-    if(!searchspinadap.getarray().equals(labels))  {
-        searchspinadap.setarray(labels);
-        searchspinner.setAdapter(searchspinadap);
-        }
-    search.setVisibility(View.VISIBLE);
-     if(labelsel==Natives.getmealvar())
-        mkmealsearch(activity);
-    }
     if(!smallScreen)
-        showkeyboard(activity);
+        numberview.showsearchkeyboard(activity,search);
 
     activity.setonback(()-> {
         activity.showui=false;
           activity.hideSystemUI();
         tk.glucodata.help.hidekeyboard(activity);
-    search.setVisibility(View.GONE); 
-        hidemealsearch();
-
-    hidekeyboard(); reopener();
+        removeSearchEditor();
+        reopener();
     if(Menus.on)
         Menus.show(activity);
 
@@ -201,8 +230,7 @@ void setminheight(View[] views,int minheight) {
 void getnumcontrol(MainActivity activity) {
    {if(doLog) {Log.i(LOG_ID,"getnumcontrol start");};};
 
-   final int height=getHeight();
-    if(numcontrol==null||numcontrol.getHeight()!=(height-systembarTop)) {
+    if(numcontrol==null) {
            ImageButton first=new ImageButton(activity);
            first.setImageResource( R.drawable.baseline_first_page_24);
            first.setOnClickListener(v-> {
@@ -280,33 +308,37 @@ void getnumcontrol(MainActivity activity) {
         setminheight(controls,minheight);
        numcontrol= new Layout(activity,(v,w,h) -> {
            final int width=getWidth();
-//           final int height=getHeight();
-           int columns=Natives.numcontrol(w,h);
-         int bar=systembarTop;
-         int over;
-         if(bar>0) {
-               v.setY(bar);
-               over=height-bar;
-               if(over>h)
-                  over=h;
-               }
-          else  {
-               if(height>h)
-                  v.setY((height-h)/2.0f);
-                over=h;
-               }
-        if(width>w) {
-               if(columns==1)  {
-                   v.setX(width-w-systembarRight);
-                }
-               else {
+           final int height=getHeight();
+           final int columns=Natives.numcontrol(w,h);
+           final int top=systembarTop;
+           final int bottom=systembarBottom;
 
-                   v.setX(((width-w-systembarRight+systembarLeft)/2.0f));
-                   }
+           int over;
+           final float y;
+           if(top>0) {
+               y=top;
+               over=Math.min(h,height-top);
                }
-                    requestRender();
-         over-=systembarBottom;
-            return new int[] {w,over};
+           else {
+               y=height>h?(height-h)/2.0f:0.0f;
+               over=h;
+               }
+
+           final float x;
+           if(width>w) {
+               if(columns==1)
+                   x=width-w-systembarRight;
+               else
+                   x=(width-w-systembarRight+systembarLeft)/2.0f;
+               }
+           else
+               x=0.0f;
+
+           v.setX(x);
+           v.setY(y);
+           requestRender();
+           over=Math.max(0,over-bottom);
+           return new int[] {w,over};
           },new View[]{first}, new View[]{back}, new View[]{search},new View[]{closecontrol}, new View[]{next}, new View[]{last}
           );
 
@@ -314,8 +346,10 @@ void getnumcontrol(MainActivity activity) {
            activity.addMyContentView(numcontrol, new ViewGroup.LayoutParams(WRAP_CONTENT,MATCH_PARENT));
         numcontrol.post(numcontrol::requestLayout);
        }
-      else
+      else {
         numcontrol.setVisibility(VISIBLE);
+        numcontrol.requestLayout();
+        }
     activity.setonback(()-> {
         numcontrol.setVisibility(GONE);
         Natives.endnumlist();
@@ -362,12 +396,33 @@ public GlucoseCurve(MainActivity context) {
     mScaleDetector = new ScaleGestureDetector(context, mScaleListener);
     final  GestureListener gestureListener = new GestureListener();
     mGestureDetector = new GestureDetector(context, gestureListener);
+    final int reverseRotationId=context.getResources().getIdentifier("config_reverseDefaultRotation","bool","android");
+    reverseDefaultRotation=reverseRotationId!=0&&context.getResources().getBoolean(reverseRotationId);
+    render = new MyRenderer(this);
     setEGLContextClientVersion(MainActivity.openglversion);
     setEGLConfigChooser(8, 8, 8, 8, 16, 1);
     setRenderer(render);
     setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
     metrics= getResources().getDisplayMetrics();
     dialogs=new Dialogs(metrics.density);
+    }
+@Override
+protected void onAttachedToWindow() {
+    super.onAttachedToWindow();
+    if(!isWearable) {
+        displayManager=(DisplayManager)getContext().getSystemService(Context.DISPLAY_SERVICE);
+        if(displayManager!=null)
+            displayManager.registerDisplayListener(displayListener,null);
+        updateDisplayRotation(false);
+        }
+    }
+@Override
+protected void onDetachedFromWindow() {
+    if(displayManager!=null) {
+        displayManager.unregisterDisplayListener(displayListener);
+        displayManager=null;
+        }
+    super.onDetachedFromWindow();
     }
     public static int dpToPx(float dp) {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, metrics);
@@ -379,6 +434,7 @@ public static int getheight() {
 public static int getwidth() {
     return width;
     }
+
 public static int getheight(Context context) {
     int current=context.getResources().getDisplayMetrics().heightPixels;
     return current>0?current:height;
@@ -387,6 +443,7 @@ public static int getwidth(Context context) {
     int current=context.getResources().getDisplayMetrics().widthPixels;
     return current>0?current:width;
     }
+
 public static boolean isLandscape(Context context) {
     int orientation=context.getResources().getConfiguration().orientation;
     if(orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE)
@@ -395,15 +452,139 @@ public static boolean isLandscape(Context context) {
         return false;
     return getwidth(context)>getheight(context);
     }
+
 void configurationChanged(MainActivity activity) {
     numberview.configurationChanged(activity);
     // Reposition floating overlays after a configuration change (e.g. rotation).
     if (search != null) search.post(search::requestLayout);
     if (searchcontrol != null) searchcontrol.post(searchcontrol::requestLayout);
     }
+
 static void setgeo(int w,int h) {
     width=w;
     height=h;
+    }
+
+/*
+ * Native and Java use the same graph transform code:
+ *   0 identity
+ *   1 counter-clockwise quarter turn
+ *   2 half turn
+ *   3 clockwise quarter turn
+ *
+ * rotateText=false is deliberately not tied to portrait: the transform also
+ * becomes 180 degrees when Android rotates to the landscape side opposite to
+ * settings->data()->orientation. Thus the NanoVG graph stays fixed relative to
+ * the phone, while Android Views and non-graph NanoVG screens rotate normally.
+ */
+int currentDisplayRotation() {
+    final android.view.Display display=getDisplay();
+    return display==null?Surface.ROTATION_0:display.getRotation();
+    }
+void syncNativeDisplayRotation() {
+    if(Applic.Nativesloaded)
+        Natives.setDisplayRotation(currentDisplayRotation(),reverseDefaultRotation,
+                MainActivity.graphLockedToFirstLandscape,
+                MainActivity.graphUsesCurrentOrientationAsLandscape);
+    }
+void refreshNativeGeometry() {
+    if(!Applic.Nativesloaded)
+        return;
+    final int w=getWidth();
+    final int h=getHeight();
+    if(w<=0||h<=0)
+        return;
+    queueEvent(()-> {
+        syncNativeDisplayRotation();
+        Natives.resize(w,h,Applic.initscreenwidth);
+        });
+    requestRender();
+    requestOverlayLayout();
+    }
+private void updateDisplayRotation(boolean redraw) {
+    final int rotation=currentDisplayRotation();
+    if(rotation==lastDisplayRotation)
+        return;
+    lastDisplayRotation=rotation;
+    syncNativeDisplayRotation();
+    if(redraw)
+        requestRender();
+    }
+private int graphRotationMode() {
+    if(isWearable)
+        return 0;
+
+    syncNativeDisplayRotation();
+    final int mode=Natives.getGraphRotationMode();
+    // The separate entered-record list is not a graph. It always keeps the
+    // Android surface coordinate system, independent of rotateText.
+    final boolean numberListActive=numcontrol!=null&&numcontrol.getVisibility()!=GONE;
+    return numberListActive?0:mode;
+    }
+private boolean graphQuarterTurn() {
+    final int mode=graphRotationMode();
+    return mode==1||mode==3;
+    }
+private float graphX(float physicalX,float physicalY) {
+    switch(graphRotationMode()) {
+        case 1: return getHeight()-physicalY;
+        case 2: return getWidth()-physicalX;
+        case 3: return physicalY;
+        default:return physicalX;
+        }
+>>>>>>> origin/primary
+    }
+private float graphY(float physicalX,float physicalY) {
+    switch(graphRotationMode()) {
+        case 1: return physicalX;
+        case 2: return getHeight()-physicalY;
+        case 3: return getWidth()-physicalX;
+        default:return physicalY;
+        }
+    }
+private float graphDistanceX(float physicalDistanceX,float physicalDistanceY) {
+    switch(graphRotationMode()) {
+        case 1: return -physicalDistanceY;
+        case 2: return -physicalDistanceX;
+        case 3: return physicalDistanceY;
+        default:return physicalDistanceX;
+        }
+    }
+private float graphDistanceY(float physicalDistanceX,float physicalDistanceY) {
+    switch(graphRotationMode()) {
+        case 1: return physicalDistanceX;
+        case 2: return -physicalDistanceY;
+        case 3: return -physicalDistanceX;
+        default:return physicalDistanceY;
+        }
+    }
+private void requestOverlayLayoutNow() {
+if(!isWearable) {
+    if(search!=null)
+        search.requestLayout();
+    if(meallayout!=null)
+        meallayout.requestLayout();
+    if(searchcontrol!=null)
+        searchcontrol.requestLayout();
+    if(numcontrol!=null)
+        numcontrol.requestLayout();
+    numberview.requestOverlayLayout();
+    }
+    }
+private final Runnable overlayRelayout=this::requestOverlayLayoutNow;
+void requestOverlayLayout() {
+        if(!isWearable) {
+            requestOverlayLayoutNow();
+            removeCallbacks(overlayRelayout);
+            post(overlayRelayout);
+            }
+    }
+void configurationChanged(MainActivity activity) {
+if(!isWearable) {
+    numberview.configurationChanged(activity);
+    updateDisplayRotation(true);
+    requestOverlayLayout();
+    }
     }
 long multitime=0L;
     @Override
@@ -411,8 +592,8 @@ long multitime=0L;
         if(turnoffalarm())
         Notify.stopalarm();
         if((render.stepresult&STEPBACK)!=0) {
-            final float x = event.getX();
-            final float y = event.getY();
+            final float x = graphX(event.getX(),event.getY());
+            final float y = graphY(event.getX(),event.getY());
     
             if(Natives.isbutton(x, y)) {
                 render.badscan=0;
@@ -439,7 +620,12 @@ final    private ScaleGestureDetector.SimpleOnScaleGestureListener mScaleListene
 
         @Override
         public boolean onScaleBegin(ScaleGestureDetector detector) {
-            focusx = detector.getFocusX();
+            switch(graphRotationMode()) {
+                case 1: focusx=getHeight()-detector.getFocusY(); break;
+                case 2: focusx=getWidth()-detector.getFocusX(); break;
+                case 3: focusx=detector.getFocusY(); break;
+                default:focusx=detector.getFocusX(); break;
+                }
             return true;
         }
 
@@ -451,7 +637,10 @@ final    private ScaleGestureDetector.SimpleOnScaleGestureListener mScaleListene
 
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
-            float scalex = detector.getCurrentSpanX() / detector.getPreviousSpanX();
+            final boolean quarterTurn=graphQuarterTurn();
+            float scalex = quarterTurn
+                    ? detector.getCurrentSpanY()/detector.getPreviousSpanY()
+                    : detector.getCurrentSpanX()/detector.getPreviousSpanX();
       {if(doLog) {Log.i(LOG_ID,"onScale SpanX="+detector.getCurrentSpanX()+" PreviousSpanX="+ detector.getPreviousSpanX()+" scalex="+scalex);};};
             Natives.xscale(scalex, focusx);
             requestRender();
@@ -495,13 +684,14 @@ void startlibrelink(String lang) {
 */
 //GarminStatus status=null;
 //bluediag bluestatus=null;
+static private boolean startv1=true;
         @UiThread
         @Override
         public boolean onSingleTapUp(MotionEvent event) {
             {if(doLog) {Log.d(LOG_ID,"onSingleTapUp");};};
             if (down ) {
-                final float x=event.getX();
-                final float y=event.getY();
+                final float x=graphX(event.getX(),event.getY());
+                final float y=graphY(event.getX(),event.getY());
                 long choice = Natives.tap(x, y);
                 if(choice==-2L) 
                     return true;
@@ -512,7 +702,7 @@ void startlibrelink(String lang) {
                 switch(menu) {
                      case 0:
                         switch (item) {
-                            case 0: ((MainActivity) getContext()).selectionSystemUI(); break;
+                           case 0: JugglucoChat.show((MainActivity) getContext());break;
                             case 1: Menus.show((MainActivity) getContext());break;
                             case 2: {
                             MainActivity activity = (MainActivity) getContext();
@@ -525,7 +715,9 @@ void startlibrelink(String lang) {
                                 }
 
                                 break;
-                              case 3: bluediag.start((MainActivity)getContext()); 
+                              case 3: 
+
+                                bluediag.start((MainActivity)getContext()); 
                                   break;
                               case 4: {
                                 MainActivity activity = (MainActivity) getContext(); 
@@ -544,10 +736,10 @@ void startlibrelink(String lang) {
 
                                 break;
                                 }
-                                            case 6: ((Activity) getContext()).moveTaskToBack(true);break; //keeps current state 
-                                            case 7:  Notify.stopalarm();break;
-                                            default:
-                                    }
+                            case 6: ((Activity) getContext()).moveTaskToBack(true);break; //keeps current state 
+                            case 7:  Notify.stopalarm();break;
+                            default:
+                            }
 
                             break;
              case 1: {
@@ -579,9 +771,17 @@ void startlibrelink(String lang) {
                 };
                 };break;
             case 2: {
-                var light=item==0;
-                var main=(MainActivity) getContext();
-                main.lightBars(light);
+                int val=item&0xF;
+                switch(val) {
+                        case 3: 
+                            ((MainActivity) getContext()).selectionSystemUI();
+                            break;
+                        default: ((MainActivity) getContext()).lightBars(val==0);
+                                break;
+                        };
+//                var light=item==0;
+ //               var main=(MainActivity) getContext();
+  //              main.lightBars(light);
                 };break;
             case 3:
                 switch (item) {
@@ -623,11 +823,18 @@ void startlibrelink(String lang) {
         if(down) {
             if((render.stepresult&STEPBACK)==0)  {
                 if(e1.isFromSource(InputDevice.SOURCE_MOUSE) && e1.isButtonPressed(MotionEvent.BUTTON_PRIMARY) && (e1.getMetaState() & KeyEvent.META_CTRL_ON)==KeyEvent.META_CTRL_ON){
-                   if(Natives.mouseScale(distanceX,e1.getRawX(), e2.getRawX())!=0)
+                   final float logicalDistanceX=graphDistanceX(distanceX,distanceY);
+                   final float oldx=graphX(e1.getX(),e1.getY());
+                   final float newx=graphX(e2.getX(),e2.getY());
+                   if(Natives.mouseScale(logicalDistanceX,oldx,newx)!=0)
                         requestRender();
                    }
                 else {
-                    if(Natives.translate(distanceX, distanceY, e1.getRawY(), e2.getRawY())!=0)
+                    final float logicalDistanceX=graphDistanceX(distanceX,distanceY);
+                    final float logicalDistanceY=graphDistanceY(distanceX,distanceY);
+                    final float oldy=graphY(e1.getX(),e1.getY());
+                    final float newy=graphY(e2.getX(),e2.getY());
+                    if(Natives.translate(logicalDistanceX,logicalDistanceY,oldy,newy)!=0)
                         requestRender();
                         }
                     }
@@ -645,9 +852,9 @@ void startlibrelink(String lang) {
         if((nutime-multitime)<1000)
             return;
                 final float wgrens=smallfontsize*3;
-                final float rgrens=getWidth()-wgrens;
-                final float x=event.getX();
-                final float y=event.getY();
+                final float x=graphX(event.getX(),event.getY());
+                final float y=graphY(event.getX(),event.getY());
+                final float rgrens=(graphQuarterTurn()?getHeight():getWidth())-wgrens;
             if(x<wgrens) {
                 Natives.prevday(1);
                 }
@@ -705,9 +912,18 @@ void startlibrelink(String lang) {
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {{if(doLog) {Log.d(LOG_ID,"onFling");};};
             // {if(doLog) {Log.i(LOG_ID,"onFling volX="+velocityX+"volY="+velocityY);};};
             if(down) {
-                float absx=abs(velocityX);
-                if(absx>2000.0&&absx>abs(velocityY)) {
-                    Natives.flingX(velocityX);
+                final int rotation=graphRotationMode();
+                final float logicalVelocityX;
+                final float logicalVelocityY;
+                switch(rotation) {
+                    case 1: logicalVelocityX=-velocityY; logicalVelocityY= velocityX; break;
+                    case 2: logicalVelocityX=-velocityX; logicalVelocityY=-velocityY; break;
+                    case 3: logicalVelocityX= velocityY; logicalVelocityY=-velocityX; break;
+                    default:logicalVelocityX= velocityX; logicalVelocityY= velocityY; break;
+                    }
+                float absx=abs(logicalVelocityX);
+                if(absx>2000.0&&absx>abs(logicalVelocityY)) {
+                    Natives.flingX(logicalVelocityX);
                     requestRender();
                 }
                 return true;
@@ -773,22 +989,114 @@ private void mktimedialog( Button but,final int num ,View parent) {
 
 
     EditText under,above;
+
+    // Search editor Views are intentionally destroyed after starting/leaving a search.
+    // Keep the criteria separately so reopening the editor continues with the same search.
+    private boolean searchStateValid=false;
+    private String savedSearchUnder="0";
+    private String savedSearchAbove="999";
+    private String savedMealIngredient="";
+    private String savedMealQuantity="";
+    private boolean savedScanSearch=false;
+    private boolean savedHistorySearch=false;
+    private boolean savedStreamSearch=true;
+    private boolean savedStreamCalibratedSearch=false;
+    private boolean savedHistoryCalibratedSearch=false;
+    private int savedSearchLabel=-1;
+
+    private void saveSearchEditorState() {
+        if(under==null||above==null)
+            return;
+
+        savedSearchUnder=under.getText().toString();
+        savedSearchAbove=above.getText().toString();
+        savedSearchLabel=labelsel;
+
+        if(scansearch!=null)
+            savedScanSearch=scansearch.isChecked();
+        if(historysearch!=null)
+            savedHistorySearch=historysearch.isChecked();
+        if(streamsearch!=null)
+            savedStreamSearch=streamsearch.isChecked();
+        if(streamcalibratedsearch!=null)
+            savedStreamCalibratedSearch=streamcalibratedsearch.isChecked();
+        if(historycalibratedsearch!=null)
+            savedHistoryCalibratedSearch=historycalibratedsearch.isChecked();
+
+        // Keep the meal criteria even when the meal row is currently hidden.
+        if(mealingredient!=null)
+            savedMealIngredient=mealingredient.getText().toString();
+        if(mealquantity!=null)
+            savedMealQuantity=mealquantity.getText().toString();
+
+        searchStateValid=true;
+    }
+
+    private void setSearchTimeButton(Button button,int minute) {
+        if(minute<0) {
+            if(Applic.hour24)
+                button.setText(button==fromtime?"00:00":"23:59");
+            else
+                button.setText(button==fromtime?"12:00am":"12:59pm");
+            button.setTextColor(oldColors);
+            button.setTextSize(COMPLEX_UNIT_PX,oldsize);
+            button.setTypeface(null,Typeface.NORMAL);
+        }
+        else {
+            button.setText(mktime(minute/60,minute%60));
+            button.setTextColor(Color.RED);
+            button.setTextSize(COMPLEX_UNIT_PX,oldsize*1.5f);
+            button.setTypeface(null,Typeface.BOLD);
+        }
+    }
+
+    private void restoreSearchEditorState(MainActivity context) {
+        under.setText(savedSearchUnder);
+        above.setText(savedSearchAbove);
+
+        scansearch.setChecked(savedScanSearch);
+        historysearch.setChecked(savedHistorySearch);
+        streamsearch.setChecked(savedStreamSearch);
+        streamcalibratedsearch.setChecked(savedStreamCalibratedSearch);
+        historycalibratedsearch.setChecked(savedHistoryCalibratedSearch);
+
+        int last=searchspinner.getCount()-1;
+        int selection=savedSearchLabel;
+        if(selection<0||selection>last)
+            selection=last;
+        labelsel=selection;
+        searchspinner.setSelection(selection);
+
+        if(selection==Natives.getmealvar()) {
+            mkmealsearch(context);
+            if(mealingredient!=null)
+                mealingredient.setText(savedMealIngredient);
+            if(mealquantity!=null)
+                mealquantity.setText(savedMealQuantity);
+        }
+
+        setSearchTimeButton(fromtime,minutes[0]);
+        setSearchTimeButton(totime,minutes[1]);
+
+        under.requestFocus();
+        editfocus.setedittext(under);
+    }
+
     ImageButton prev=null,next=null;
    void searchaway() {
-       if(search!=null) {
-           search.setVisibility(GONE);
-       hidemealsearch();
-           hidekeyboard();
+       removeSearchEditor();
      if(searchcontrol!=null)
          searchcontrol.setVisibility(GONE);
-        reopener();
+       reopener();
        Natives.stopsearch();
        requestRender();
-       }
    }
 static void reopener() {
-    for(int i=0;i<reopennr;i++)
-        reopen[i].setVisibility(VISIBLE);
+    for(int i=0;i<reopennr;i++) {
+        if(reopen[i]!=null)
+            reopen[i].setVisibility(VISIBLE);
+        reopen[i]=null;
+        }
     reopennr=0;
     }
 int labelsel=-1;
@@ -798,6 +1106,8 @@ if(!isWearable) {
          mealquantity.setText("");
          mealingredient.setText("");
          }
+    savedMealIngredient="";
+    savedMealQuantity="";
       under.setText("0");
         above.setText("999");
         labelsel=searchspinner.getCount()-1;
@@ -819,8 +1129,8 @@ if(!isWearable) {
     totime.setTextColor(oldColors);
     totime.setTextSize(COMPLEX_UNIT_PX,oldsize);
     fromtime.setTextSize(COMPLEX_UNIT_PX,oldsize);
-//    fromtime.setTypeface(null,0);
-//    totime.setTypeface(null,0);
+    fromtime.setTypeface(null,Typeface.NORMAL);
+    totime.setTypeface(null,Typeface.NORMAL);
         minutes[0]=-1;
         minutes[1]=-1;
 
@@ -860,9 +1170,7 @@ void search(boolean forward) {
 
        if(Natives.search(glsearch==0?labelsel:glsearch,funder,fabove,minutes[0],minutes[1],forward,ingsearch,ingamount)==0) {
 
-           search.setVisibility(GONE);
-           hidemealsearch();
-           hidekeyboard();
+           removeSearchEditor();
            requestRender();
             MainActivity activity=(MainActivity)getContext();
         activity.poponback();
@@ -1072,6 +1380,10 @@ void mkmealsearch(MainActivity act) {
         else
             mealquantity=geteditview(act,new editclosefocus());
         mealquantity.setMinEms(3);
+        if(searchStateValid) {
+            mealingredient.setText(savedMealIngredient);
+            mealquantity.setText(savedMealQuantity);
+        }
         int pad= (int)(tk.glucodata.GlucoseCurve.metrics.density*5);
              inglabel.setPadding(pad,0,pad,0);
         qualabel.setPadding(pad,0,pad,0);
@@ -1221,19 +1533,10 @@ else {
 if(!smallScreen) {
 //    boolean rtl=Natives.getRTL();
     if(height>h&&width>w) {
-
-           lay.setY(ypos);
-           if(width>height) {
+           if(GlucoseCurve.isLandscape(context)) {
+                lay.setY(ypos);
 //                lay.setY((height - h) / 2);
-                int half= width / 2;
-                int af=(half-w)/4;
-                int posx= half - w-af;
-                if(posx<0) {
-                    posx=0;
-                    numberview.noroom=true;
-                    }
-                else
-                    numberview.noroom=false;
+                int posx=numberview.searchLandscapeX(width,w);
                 lay.setX(posx);
                {if(doLog) {Log.i(LOG_ID,"search h="+h+" height="+height+" w="+w+" width="+width+" posx="+posx);};};
                 }
@@ -1242,7 +1545,7 @@ if(!smallScreen) {
                 int af=(half-h)/4;
                  var xpos= (width - w)/2;
                 lay.setX(xpos);
-        //        lay.setY(half - h-af);
+                lay.setY(Math.max(systembarTop,half-h-af));
                 {if(doLog) {Log.i(LOG_ID,"search h="+h+" height="+height+" w="+w+" width="+width+" posx="+xpos);};};
             }
         }
@@ -1273,7 +1576,10 @@ if(!smallScreen) {
         } );
     
     clear.setOnClickListener(this::clearsearch );
-    clearsearch(clear);
+    if(searchStateValid)
+        restoreSearchEditorState(context);
+    else
+        clearsearch(clear);
      layout.post(layout::requestLayout);
 //       editfocus.setedittext(under);
 
@@ -1319,12 +1625,15 @@ public void onPause() {
 @Override
 public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
     {if(doLog) {Log.i(LOG_ID,"surfaceChanged format="+format+", width="+w+", height="+h);};};
+    setgeo(w,h);
     super.surfaceChanged(holder,format,w,h);
+    requestOverlayLayout();
     }
 @Override
 public void surfaceCreated(SurfaceHolder holder) {
     {if(doLog) {Log.i(LOG_ID,"surfaceCreated(SurfaceHolder holder)");};};
     super.surfaceCreated(holder);
+    ((MainActivity)getContext()).onceshowintro();
     }
 @Override
 public void surfaceDestroyed(SurfaceHolder holder) {
@@ -1334,18 +1643,14 @@ public void surfaceDestroyed(SurfaceHolder holder) {
 static public void    doabout(MainActivity activity) {
 if(!isWearable) {
     String about=activity.getString(R.string.about)+"<p>Version Code: "+ BuildConfig.VERSION_CODE+"<br>Version Name: "+ 
-        BuildConfig.VERSION_NAME +"<br>"+Natives.getCPUarch()+"<br>Build time: "+ BuildConfig.BUILD_TIME +"</p>";
+        BuildConfig.VERSION_NAME +"<br>"+Natives.getCPUarch()+"<br>Build time: "+ BuildTime.TIME +"</p>";
     
     help.help(about, activity,l->{});
     }
     }
 void removeviews() {
         numberview.deleteviews();
-        searchspinner=null;
-        if(search!=null) {
-            removeContentView(search);
-            search=null;
-            }
+        removeSearchEditor();
         if(searchcontrol!=null) {
             removeContentView(searchcontrol);
             searchcontrol=null;

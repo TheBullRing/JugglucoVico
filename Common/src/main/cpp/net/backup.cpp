@@ -43,11 +43,15 @@
 
 #include <sys/wait.h>
 #include <unistd.h>
+#include <atomic>
+
 #include "destruct.hpp"
 #include "logs.hpp"
 #include "myfdsan.h"
 #include "TCPConnect.hpp"
-extern Connect *connections[];
+#ifdef WEAROS_MESSAGES
+extern std::atomic_bool wearmessages[];
+#endif
 #ifndef LOGGER
 #define LOGGER(...) fprintf(stderr,__VA_ARGS__)
 #endif
@@ -71,6 +75,20 @@ char servererrorbuf[maxservererror]="";
 #define serverprint(...) snprintf( servererrorbuf,maxservererror,__VA_ARGS__)
 #define servererror(...) savebuferror(servererrorbuf,maxservererror,__VA_ARGS__)
 static bool serverloop(int sock, passhost_t *hosts,int &hostlen)  ;
+
+static std::atomic_bool receiverRunning{false},receiverStarting{false};
+bool receiveractive(bool alwaysstart) {
+    receiverStarting.store(true);
+    bool wasrunning=receiverRunning.exchange(true);
+    if(wasrunning&&!alwaysstart) {
+        receiverStarting.store(false);
+        return true;
+        }
+    return false;
+    }
+static void receiverEnded() {
+    receiverRunning.store(false);
+    }
 static bool startserver(char *port, passhost_t *hosts,int *hostlen,bool *shutdownreceiver) {
     constexpr const char receiver[]{"RECEIVER"};
 #ifndef HAVE_NOPRCTL
@@ -83,7 +101,8 @@ static bool startserver(char *port, passhost_t *hosts,int *hostlen,bool *shutdow
                 ::shutdownreceiver=nullptr;
                 delete[] shutdownreceiver;
                 }
-
+            if(!receiverStarting.load())
+                    receiverEnded();
             ;});
     struct addrinfo hints{.ai_flags=AI_PASSIVE,.ai_family=AF_INET6,.ai_socktype=SOCK_STREAM};
 
@@ -161,9 +180,6 @@ static bool startserver(char *port, passhost_t *hosts,int *hostlen,bool *shutdow
 #include "passhost.hpp"
 static int globalsocket=-1;
 //get_in_addr((struct sockaddr *)&their_addr)
-bool receiveractive() {
-    return globalsocket!=-1;
-    }
 void stopreceiver() {
     LOGGERTAG("stopreceiver %d\n",globalsocket);
     if(shutdownreceiver) {
@@ -394,7 +410,7 @@ extern void receivetimeout(int sock,int secs) ;
      receivetimeout(new_fd,0);
      }
 
-void receiverthread(passhost_t *host,const int allindex) {
+static void receiverthreadon(passhost_t *host,const int allindex,std::shared_ptr<Connect> con) {
       char buf[17];
       snprintf(buf,17,"receiver %d",allindex);
 #ifndef HAVE_NOPRCTL
@@ -402,7 +418,7 @@ void receiverthread(passhost_t *host,const int allindex) {
 #endif
 
 
-    Connect *con=connections[allindex];
+    if(!con)return;
     con->receiving=true;
     destruct _{[con]{ con->receiving=false;}};
     LOGGERTAG("receiverthread %d %s\n",con->getReceiverIdent(),buf);
@@ -413,6 +429,11 @@ void receiverthread(passhost_t *host,const int allindex) {
     LOGGERTAG("shutdown(%d)\n",con->getReceiverIdent());
     con->shutdownReceiver();
     }
+
+
+void receiverthread(passhost_t *host,const int allindex) {
+    receiverthreadon(host,allindex,getconnection(allindex));
+}
 
 
 bool serverloop(int serversock, passhost_t *hosts,int &hostlen)  {
@@ -540,20 +561,28 @@ globalsocket=serversock;
          {
 //           const int keepidle = 10*60;
         int allindex=hit-hosts;
-        TCPConnect *con=(TCPConnect *)connections[allindex];
+        auto con=getconnectionas<TCPConnect>(allindex);
         if(!con) {
             sockclose(new_fd);
             continue;
             }
+#ifdef WEAROS_MESSAGES
+        if(wearmessages[allindex]) {
+            LOGGERTAG("TCP receiver refused while message carrier owns host=%d\n",allindex);
+            sockclose(new_fd);continue;
+        }
+#endif
+        TCPConnect incoming(allindex);
+        incoming.setReceiverSock(new_fd);
+        if(!incoming.testreceivemagic(hit)) {
+            incoming.closeReceiverConnection();continue;
+        }
+        // Do not expose the new socket to an old parser during the handshake.
+        incoming.getReceiverSock()=-1;
         int &sock=con->getReceiverSock();
         int oldsock=-1;
         std::swap(oldsock,sock);
         con->setReceiverSock(new_fd);
-        if(!con->testreceivemagic(hit)) {
-            con->closeReceiverConnection();
-            sock=oldsock;
-            continue;
-            }
     *servererrorbuf='\0';
     #define SENDPASSIVE 1     
     #define RECEIVEFROM 2     
@@ -591,12 +620,20 @@ globalsocket=serversock;
         sockclose(oldsock);
         receiversockopt(new_fd) ;
         LOGGER("serverloop oldsock=%d newsock=%d\n",oldsock,new_fd);
-        std::thread  handlecon(receiverthread,hit,allindex);
+        const int owned=dup(new_fd);
+        if(owned<0) {con->closeReceiverConnection();continue;}
+        auto reader=std::make_shared<TCPConnect>(allindex);
+        reader->setReceiverSock(owned);
+        std::thread handlecon([hit,allindex,reader] {
+            receiverthreadon(hit,allindex,reader);
+            reader->closeReceiverConnection();
+        });
         handlecon.detach();
         }
         }
     }
 void startreceiver(const char *port,passhost_t *hosts,int &hostlen) {
+    LOGGER("Start receiver globalsocket=%d\n",globalsocket);
     if(globalsocket!=-1) {
         sleep(2);
         globalsocket=-1;
@@ -604,6 +641,7 @@ void startreceiver(const char *port,passhost_t *hosts,int &hostlen) {
     int len=strlen(port)+1;
     char *portcp=new char[len];
     memcpy(portcp,port,len);
+    receiverStarting.store(false);
     std::thread backup(startserver,portcp,hosts,&hostlen,shutdownreceiver=new bool[1]());
     backup.detach(); 
     }

@@ -35,6 +35,9 @@ import android.widget.TextView;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 import static tk.glucodata.Log.doLog;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 public class Layout extends ViewGroup {
 /*
@@ -147,6 +150,29 @@ public static Object[] portraitRow(Object[] portrait, Object[] landscape) {
    private int rownr=0;
    private  int[] baselines=null;
   private tk.glucodata.Placer placer;
+
+  /*
+   * The rows passed to the constructor are the landscape layout.  When
+   * portraitLayout() is supplied, the same Layout can switch to a second
+   * row organization without recreating the Views.
+   */
+  private Object[][] landscapeRows=null;
+  private boolean landscapeRev=true;
+  private tk.glucodata.Placer landscapePlacer=null;
+  private Object[][] portraitRows=null;
+  private boolean portraitRev=true;
+  private tk.glucodata.Placer portraitPlacer=null;
+  public boolean portraitActive=false;
+  private boolean rowsDirty=false;
+
+  @FunctionalInterface
+  public interface SystemBarInsets {
+      int[] get(int left,int top,int right,int bottom);
+      }
+
+  private SystemBarInsets systemBarPadding=null;
+  private SystemBarInsets systemBarMargins=null;
+
 static int[]  noneplacer(View l,int w,int h) {
      return new int[] {w,h};
     };
@@ -220,6 +246,9 @@ public Layout(Context context,Placer placer, Object [] ... inrows) {
     }
 public Layout(Context context,boolean rev,Placer placer, Object [] ... inrows) {
         super(context);
+        landscapeRows=inrows;
+        landscapeRev=rev;
+        landscapePlacer=placer;
         Object[][] rows= (rev&&MainActivity.rtl)?reverseAll(inrows):inrows;
         rownr= rows.length;
         init(context,placer,rownr);
@@ -228,6 +257,224 @@ public Layout(Context context,boolean rev,Placer placer, Object [] ... inrows) {
           }
 
        }
+
+public Layout portraitLayout(Object [] ... rows) {
+    return portraitLayout(true,Layout::noneplacer,rows);
+    }
+public Layout portraitLayout(boolean rev,Object [] ... rows) {
+    return portraitLayout(rev,Layout::noneplacer,rows);
+    }
+public Layout portraitLayout(Placer placer,Object [] ... rows) {
+    return portraitLayout(true,placer,rows);
+    }
+public Layout portraitLayout(boolean rev,Placer placer,Object [] ... rows) {
+    portraitRows=rows;
+    portraitRev=rev;
+    portraitPlacer=placer;
+    rowsDirty=true;
+    requestLayout();
+    return this;
+    }
+
+/*
+ * Optional system-bar insets for this Layout.  The callback is evaluated
+ * again during every measure pass, so MainActivity.systembar* changes made
+ * by a rotation are picked up without recreating the Layout.
+ */
+public Layout systembarPadding() {
+    return systembarPadding((left,top,right,bottom)->new int[]{left,top,right,bottom});
+    }
+public Layout systembarMargins() {
+    return systembarMargins((left,top,right,bottom)->new int[]{left,top,right,bottom});
+    }
+
+private static boolean validInsets(int[] insets) {
+    return insets!=null&&insets.length==4;
+    }
+
+
+public Layout systembarPadding(SystemBarInsets insets) {
+    systemBarPadding=insets;
+
+    applySystemBars( MainActivity.systembarLeft, MainActivity.systembarTop, MainActivity.systembarRight, MainActivity.systembarBottom);
+
+    ensureSystemBarInsetsListener();
+    requestLayout();
+    return this;
+}
+
+public Layout systembarMargins(SystemBarInsets insets) {
+    systemBarMargins=insets;
+
+    applySystemBars( MainActivity.systembarLeft, MainActivity.systembarTop, MainActivity.systembarRight, MainActivity.systembarBottom);
+
+    ensureSystemBarInsetsListener();
+    requestLayout();
+    return this;
+}
+
+/*
+private void updateSystemBars() {
+    final int left=MainActivity.systembarLeft;
+    final int top=MainActivity.systembarTop;
+    final int right=MainActivity.systembarRight;
+    final int bottom=MainActivity.systembarBottom;
+
+    if(systemBarPadding!=null) {
+        int[] pad=systemBarPadding.get(left,top,right,bottom);
+        if(validInsets(pad) &&
+           (getPaddingLeft()!=pad[0] || getPaddingTop()!=pad[1] ||
+            getPaddingRight()!=pad[2] || getPaddingBottom()!=pad[3]))
+            setPadding(pad[0],pad[1],pad[2],pad[3]);
+        }
+
+    if(systemBarMargins!=null) {
+        int[] use=systemBarMargins.get(left,top,right,bottom);
+        if(validInsets(use)) {
+            ViewGroup.LayoutParams params=getLayoutParams();
+            if(params instanceof ViewGroup.MarginLayoutParams) {
+                var marg=(ViewGroup.MarginLayoutParams)params;
+                if(marg.leftMargin!=use[0] || marg.topMargin!=use[1] ||
+                   marg.rightMargin!=use[2] || marg.bottomMargin!=use[3]) {
+
+                    marg.leftMargin=use[0];
+                    marg.topMargin=use[1];
+                    marg.rightMargin=use[2];
+                    marg.bottomMargin=use[3];
+
+                    final var par=getParent();
+                    if(par!=null)
+                        par.requestLayout();
+                }
+            }
+        }
+     }
+
+
+
+    } */
+
+private boolean applySystemBars(
+        final int left,
+        final int top,
+        final int right,
+        final int bottom) {
+
+    boolean changed=false;
+
+    if(systemBarPadding!=null) {
+        int[] pad=systemBarPadding.get(left,top,right,bottom);
+
+        if(validInsets(pad) &&
+           (getPaddingLeft()!=pad[0] ||
+            getPaddingTop()!=pad[1] ||
+            getPaddingRight()!=pad[2] ||
+            getPaddingBottom()!=pad[3])) {
+
+            setPadding(pad[0],pad[1],pad[2],pad[3]);
+            changed=true;
+        }
+    }
+
+    if(systemBarMargins!=null) {
+        int[] use=systemBarMargins.get(left,top,right,bottom);
+
+        if(validInsets(use)) {
+            ViewGroup.LayoutParams params=getLayoutParams();
+
+            if(params instanceof ViewGroup.MarginLayoutParams) {
+                var marg=(ViewGroup.MarginLayoutParams)params;
+
+                if(marg.leftMargin!=use[0] ||
+                   marg.topMargin!=use[1] ||
+                   marg.rightMargin!=use[2] ||
+                   marg.bottomMargin!=use[3]) {
+
+                    marg.leftMargin=use[0];
+                    marg.topMargin=use[1];
+                    marg.rightMargin=use[2];
+                    marg.bottomMargin=use[3];
+
+                    changed=true;
+                }
+            }
+        }
+    }
+
+    return changed;
+}
+
+
+@Override
+protected void onAttachedToWindow() {
+    super.onAttachedToWindow();
+    applySystemBars(MainActivity.systembarLeft, MainActivity.systembarTop, MainActivity.systembarRight, MainActivity.systembarBottom);
+    if(systemBarInsetsListener)
+        ViewCompat.requestApplyInsets(this);
+  }
+
+
+private void addRowChildrenInLayout(Object[] rowobjects,int row) {
+    if(rowobjects!=null) {
+        for(Object obel:rowobjects) {
+            if(obel instanceof View) {
+                addElInLayout((View)obel,row);
+                }
+            else if(obel instanceof View[]) {
+                for(var v:(View[])obel) {
+                    if(v!=null)
+                        addElInLayout(v,row);
+                    }
+                }
+            }
+        }
+    rowend[row]=getChildCount();
+    }
+
+private void addElInLayout(View el,int row) {
+    el.setAccessibilityDelegate(accessDeli);
+    ViewGroup.LayoutParams params=el.getLayoutParams();
+    if(params==null)
+        params=generateDefaultLayoutParams();
+    addViewInLayout(el,-1,params,true);
+    el.setTag(R.id.layoutrow,row);
+    }
+
+private void useRowsInLayout(Object[][] inrows,boolean rev,Placer useplacer) {
+    View focused=findFocus();
+    Object[][] rows=(rev&&MainActivity.rtl)?reverseAll(inrows):inrows;
+
+    removeAllViewsInLayout();
+    rownr=rows.length;
+    reserve(rownr);
+    placer=useplacer;
+    for(int i=0;i<rownr;i++)
+        addRowChildrenInLayout(rows[i],i);
+
+    if(focused!=null&&focused.getParent()==this)
+        focused.requestFocus();
+    }
+
+private boolean measureIsPortrait() {
+    return getResources().getConfiguration().orientation==
+            android.content.res.Configuration.ORIENTATION_PORTRAIT;
+    }
+
+private void updateOrientationRows() {
+    if(portraitRows==null)
+        return;
+
+    boolean portrait=measureIsPortrait();
+    if(!rowsDirty&&portrait==portraitActive)
+        return;
+
+    portraitActive=portrait;
+    rowsDirty=false;
+    if(portrait)
+        useRowsInLayout(portraitRows,portraitRev,portraitPlacer);
+    else
+        useRowsInLayout(landscapeRows,landscapeRev,landscapePlacer);
+    }
     public void empty() {
         rownr=0;
     removeAllViews();
@@ -289,6 +536,129 @@ static private int childHeight(View child) {
       return  Math.max(child.getMinimumHeight(),child.getMeasuredHeight());
    }
 
+int rowgeo(final int start, final int row,
+           int widthMeasureSpec, int heightMeasureSpec) {
+    int end = rowend[row];
+    int maxWidth = 0, totHeight = 0;
+    int maxbaseline = 0;
+    int not = 0;
+
+    matchparent[row] = null;
+
+    View match = null;
+    int matchLeft = 0, matchRight = 0;
+    int matchTop = 0, matchBottom = 0;
+
+    /*
+     * First pass: measure all ordinary children.
+     * Remember the MATCH_PARENT child, but don't measure it yet.
+     */
+    for (int c = start; c < end; c++) {
+        View child = getChildAt(c);
+
+        if (child == null || child.getVisibility() == GONE)
+            continue;
+
+        ViewGroup.LayoutParams params = child.getLayoutParams();
+
+        int leftmargin, rightmargin, topmargin, bottommargin;
+
+        if (params instanceof ViewGroup.MarginLayoutParams) {
+            var margins = (ViewGroup.MarginLayoutParams) params;
+            leftmargin = margins.leftMargin;
+            rightmargin = margins.rightMargin;
+            topmargin = margins.topMargin;
+            bottommargin = margins.bottomMargin;
+        } else {
+            leftmargin = rightmargin = topmargin = bottommargin = 0;
+        }
+
+        not++;
+
+        if (params != null && params.width == MATCH_PARENT) {
+            matchparent[row] = child;
+            match = child;
+
+            matchLeft = leftmargin;
+            matchRight = rightmargin;
+            matchTop = topmargin;
+            matchBottom = bottommargin;
+            continue;
+        }
+
+        measureChild(child, widthMeasureSpec, heightMeasureSpec);
+
+        maxWidth += childWidth(child) + leftmargin + rightmargin;
+
+        final int h = childHeight(child) + topmargin + bottommargin;
+        if (totHeight < h)
+            totHeight = h;
+
+        if (usebaseline) {
+            int baseline = child.getBaseline();
+            if (baseline < 0)
+                baseline = (int) (h / 2 - basefromiddle);
+
+            if (baseline > maxbaseline)
+                maxbaseline = baseline;
+        }
+    }
+
+    /*
+     * Now we know how much horizontal space the other Views need.
+     * Measure MATCH_PARENT at exactly the space that will remain.
+     */
+    if (match != null) {
+        ViewGroup.LayoutParams params = match.getLayoutParams();
+
+        int parentWidth = MeasureSpec.getSize(widthMeasureSpec);
+
+        int available =
+                parentWidth
+                - getPaddingLeft()
+                - getPaddingRight()
+                - maxWidth
+                - matchLeft
+                - matchRight;
+
+        if (available < 0)
+            available = 0;
+
+        int childWidthSpec = MeasureSpec.makeMeasureSpec(
+                available, MeasureSpec.EXACTLY);
+
+        int childHeightSpec = getChildMeasureSpec(
+                heightMeasureSpec,
+                getPaddingTop() + getPaddingBottom()
+                        + matchTop + matchBottom,
+                params.height);
+
+        match.measure(childWidthSpec, childHeightSpec);
+
+//        maxWidth += match.getMinimumWidth() + matchLeft + matchRight;
+        maxWidth +=  matchLeft + matchRight;
+
+        final int h = childHeight(match) + matchTop + matchBottom;
+        if (totHeight < h)
+            totHeight = h;
+
+        if (usebaseline) {
+            int baseline = match.getBaseline();
+            if (baseline < 0)
+                baseline = (int) (h / 2 - basefromiddle);
+
+            if (baseline > maxbaseline)
+                maxbaseline = baseline;
+        }
+    }
+
+    notgone[row] = not;
+    maxwidths[row] = maxWidth;
+    baselines[row] = maxbaseline;
+
+    return totHeight;
+}
+/*
 int rowgeo(final int start,final int row,int widthMeasureSpec, int heightMeasureSpec) {
    int end=rowend[row];
    int maxWidth=0,totHeight=0;
@@ -311,12 +681,39 @@ int rowgeo(final int start,final int row,int widthMeasureSpec, int heightMeasure
           else {
             leftmargin=rightmargin=bottommargin=topmargin=0;
             }
-          if(params!=null&&params.width==MATCH_PARENT) {
-               matchparent[row]=child;
-               measureChild(child,1, heightMeasureSpec);
-               maxWidth+=child.getMinimumWidth()+leftmargin+rightmargin;
 
-               }
+if(params!=null && params.width==MATCH_PARENT) {
+    matchparent[row]=child;
+
+    int availableWidth =
+            MeasureSpec.getSize(widthMeasureSpec)
+            - getPaddingLeft()
+            - getPaddingRight()
+            - leftmargin
+            - rightmargin;
+
+    int childWidthSpec = MeasureSpec.makeMeasureSpec(
+            Math.max(0, availableWidth),
+            MeasureSpec.EXACTLY);
+
+    int childHeightSpec = getChildMeasureSpec(
+            heightMeasureSpec,
+            getPaddingTop() + getPaddingBottom()
+                    + topmargin + bottommargin,
+            params.height);
+
+    child.measure(childWidthSpec, childHeightSpec);
+
+    maxWidth += childWidth(child) + leftmargin + rightmargin;
+}
+
+
+//          if(params!=null&&params.width==MATCH_PARENT) {
+//               matchparent[row]=child;
+//               measureChild(child,1, heightMeasureSpec);
+//               maxWidth+=child.getMinimumWidth()+leftmargin+rightmargin;
+//
+//               } 
           else {
                 measureChild(child,widthMeasureSpec, heightMeasureSpec);
                 maxWidth +=  childWidth(child)+leftmargin+rightmargin;
@@ -336,6 +733,7 @@ int rowgeo(final int start,final int row,int widthMeasureSpec, int heightMeasure
     baselines[row]=maxbaseline;
     return totHeight;
     }
+    */
 boolean usebaseline=true;
 int rowmax;
 int totHeight;
@@ -383,6 +781,7 @@ boolean useMatch=false;
 @Override
 protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
    //Log.i(LOG_ID,"onMeasure "+widthMeasureSpec);
+   updateOrientationRows();
    int[] res=domeasure(widthMeasureSpec, heightMeasureSpec);
  
     if(useMatch) {
@@ -512,9 +911,22 @@ final int layrow(final int top,final int start,final int row,final int maxheight
             leftmargin=rightmargin=bottommargin=topmargin=0;
             }
          final int childheight= childHeight(child);
-         int cheight= Math.min(childheight,maxheight-bottommargin-topmargin);
+         /* A MATCH_PARENT-height child in a row with multiple children gets the
+          * height of that row.  This is useful for a nested Layout whose own
+          * rows should distribute themselves over the height of a taller sibling.
+          * Single-child rows deliberately keep their measured height, so the same
+          * child can remain compact when portraitLayout() puts it on its own row.
+          */
+         final boolean matchheight=params!=null&&params.height==MATCH_PARENT;
+         int cheight= matchheight
+                 ? Math.max(0,maxheight-bottommargin-topmargin)
+                 : Math.min(childheight,maxheight-bottommargin-topmargin);
         int tophier;
-         if(usebaseline) {
+         if(matchheight) {
+            // Baseline alignment makes no sense after vertically stretching a child.
+            tophier=top+topmargin;
+            }
+         else if(usebaseline) {
              int childbaseline=child.getBaseline();
              if(childbaseline<0) childbaseline=(int)(cheight/2-basefromiddle);
               tophier=(top+baseline-childbaseline)+topmargin;
@@ -618,5 +1030,20 @@ public static void addSystemMargins(View view) {
     public int getBaseline() {
         return 0;
     }  */
+
+private boolean systemBarInsetsListener=false;
+
+private void ensureSystemBarInsetsListener() {
+    if(systemBarInsetsListener)
+        return;
+    systemBarInsetsListener=true;
+    ViewCompat.setOnApplyWindowInsetsListener(this,(v,windowInsets)-> { 
+        Insets bars=windowInsets.getInsets( WindowInsetsCompat.Type.systemBars());
+        if(applySystemBars( bars.left, bars.top, bars.right, bars.bottom)) requestLayout();
+        return windowInsets;
+       });
+    if(ViewCompat.isAttachedToWindow(this))
+        ViewCompat.requestApplyInsets(this);
+}
 
 }

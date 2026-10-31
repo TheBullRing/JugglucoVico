@@ -39,10 +39,12 @@ import static tk.glucodata.util.getcheckbox;
 import android.content.DialogInterface;
 import android.os.Build;
 import android.text.method.ScrollingMovementMethod;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
@@ -67,6 +69,7 @@ private static void confirmFinish(MainActivity act,long ptr) {
          public void onClick(DialogInterface dialog, int id) {
                Log.i(LOG_ID,"confirmFinish");
                 Natives.finishfromSensorptr(ptr);
+                SensorBluetooth.sensorEnded(serial);
                 act.requestRender();
                 MainActivity.doonback();
                 bluediag.start(act);
@@ -146,30 +149,38 @@ static void show(MainActivity act) {
 
         } });
     int pads=(int)(GlucoseCurve.metrics.density*20);
-     getMargins(usebluetooth).topMargin=(int)(GlucoseCurve.metrics.density*15);
+/*     getMargins(usebluetooth).topMargin=(int)(GlucoseCurve.metrics.density*15);
      var spinmar= getMargins(spin);
      spinmar.topMargin=pads;
      spinmar.bottomMargin=pads;
+     */
 
     var buttons=new Layout(act, (x,w,h)->{ 
          return new int[] {w,h};
            } 
                    , new View[]{finish},new View[]{help},new View[]{usebluetooth},new View[]{spin}
-          );
-     buttons.usebaseline=false;
+          ).portraitLayout();
+//     buttons.usebaseline=false;
     var width=GlucoseCurve.getwidth(); 
     var height=GlucoseCurve.getheight(); 
-    getMargins(finish).topMargin=(int)(MainActivity.systembarTop);
+ //   getMargins(finish).topMargin=(int)(MainActivity.systembarTop);
+    buttons.setLayoutParams( new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,ViewGroup.LayoutParams.MATCH_PARENT));
     var layout=new Layout(act, (x,w,h)->{ 
-        x.setX((width-w+MainActivity.systembarLeft-MainActivity.systembarRight)*.5f);
+//        x.setX((width-w+MainActivity.systembarLeft-MainActivity.systembarRight)*.5f);
          return new int[] {w,h};
            },
-          new View[]{sensors.viewgroup,buttons});
-     layout.usebaseline=false;
+          new View[]{sensors.viewgroup,buttons}).portraitLayout(new View[]{spin,usebluetooth},new View[]{help,finish},new View[]{sensors.viewgroup});
+ //    layout.usebaseline=false;
     layout.setBackgroundResource(R.drawable.dialogbackground);
     //layout.setPadding((int)(GlucoseCurve.metrics.density*10),0,(int)(GlucoseCurve.metrics.density*5),0);
     layout.setPadding(0,0,(int)(GlucoseCurve.metrics.density*5),0);
-    act.addMyContentView(layout, new ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+
+    var  params =  new FrameLayout.LayoutParams(
+                    WRAP_CONTENT,
+                    WRAP_CONTENT,
+                    Gravity.CENTER_HORIZONTAL|Gravity.CENTER);
+
+    act.addMyContentView(layout, params);
     MainActivity.setonback(() -> {
             isVisible=false;
             removeContentView(layout);

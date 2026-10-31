@@ -42,6 +42,7 @@ import static tk.glucodata.Backup.getnumedit;
 import static tk.glucodata.Layout.getMargins;
 import static tk.glucodata.MainActivity.canRotate;
 import static tk.glucodata.Log.doLog;
+import static tk.glucodata.MainActivity.canRotate;
 import static tk.glucodata.Natives.getInvertColors;
 import static tk.glucodata.Natives.getRTL;
 import static tk.glucodata.Natives.getScheduleProfile;
@@ -60,6 +61,7 @@ import static tk.glucodata.util.getbutton;
 import static tk.glucodata.util.getcheckbox;
 import static tk.glucodata.util.getlabel;
 import static tk.glucodata.util.getlocale;
+
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -479,20 +481,40 @@ static private void advancedalarm(MainActivity context,View parview) {
        }
     else {
      var help=getbutton(context,R.string.helpname);
-     help.setOnClickListener(v-> help(R.string.advancedAlarmshelp,context));
-     final var width= GlucoseCurve.getwidth();
-     var nwmarg= (int)(width*.15);
+     var nwmarg= (int)(tk.glucodata.GlucoseCurve.metrics.density*40.0);
      getMargins(close).setMarginEnd(nwmarg);
      getMargins(help).setMarginStart(nwmarg);
-        Layout lay = new Layout(context, (l, w, h) -> {
+ //    getMargins(verylowalarm[0]).topMargin=(int)(tk.glucodata.GlucoseCurve.metrics.density*8.0);
+     help.setOnClickListener(v-> help(R.string.advancedAlarmshelp,context));
+     Layout lay = new Layout(context, (l, w, h) -> {
             int[] ret={w,h};
             return ret;
 
-            },verylowalarm,veryhighalarm,prelowalarm,prehighalarm,new View[]{help,schedules,close});
-        layout=lay;
-    final int sidepad=(int)(GlucoseCurve.metrics.density*8);
-    layout.setPadding(MainActivity.systembarLeft+sidepad,MainActivity.systembarTop*2/3,sidepad+MainActivity.systembarRight,sidepad+MainActivity.systembarBottom*9/10);
+            },verylowalarm,veryhighalarm,prelowalarm,prehighalarm,new View[]{help,schedules,close})
+            .portraitLayout( new View[]{verylowalarm[0]},new View[]{verylowalarm[1],verylowalarm[2]},
+                new View[]{veryhighalarm[0]},new View[]{veryhighalarm[1],veryhighalarm[2]},
+                new View[]{prelowalarm[0]},new View[]{prelowalarm[1],prelowalarm[2]},
+                new View[]{prehighalarm[0]},new View[]{prehighalarm[1],prehighalarm[2]},
+                new View[]{schedules},new View[]{help,close}
+
+                );
+        /*    final int sidepad=(int)(GlucoseCurve.metrics.density*8);
+            lay.systembarPadding((left,top,right,bottom)-> {
+                  return   new int[]{left+sidepad,top,sidepad+right,bottom}; */
+        
+
+        final int sidepad=(int)(GlucoseCurve.metrics.density*8);
+       getMargins(close).bottomMargin=getMargins(close).bottomMargin=sidepad;
+        lay.systembarPadding((left,top,right,bottom)-> {
+              return   new int[]{left+sidepad,top,sidepad+right,bottom*9/10};
+              });
+       layout=lay;
         }
+
+
+
+
+
 
 
     schedules.setOnClickListener(v->scheduleProfiles(context,layout));
@@ -680,7 +702,9 @@ static private void changeProfile(MainActivity act,int wasindex, ProfileSchedule
         var layout= new Layout(act, (l, w, h) -> {
             int[] ret={w,h};
             return ret;
-            },new View[]{timebut,spin},new View[]{cancel,delete,save});
+            },new View[]{timebut,spin},new View[]{cancel,delete,save})
+         //   .portraitLayout(new View[]{timebut},new View[]{spin},new View[]{cancel,delete},new View[]{save})
+            .systembarMargins((left,top,right,bottom)->new int[]{0,0,0,bottom});
             /*
         layout.measure(WRAP_CONTENT, WRAP_CONTENT);
         layout.setX( (GlucoseCurve.getwidth()-layout.getMeasuredWidth())*.5f);
@@ -688,7 +712,6 @@ static private void changeProfile(MainActivity act,int wasindex, ProfileSchedule
         */
          layout.setBackgroundResource(R.drawable.helpbackground);
         var  params =    new FrameLayout.LayoutParams( WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
-        params.bottomMargin=MainActivity.systembarBottom;
 
       act.addMyContentView(layout, params);
     //    act.addMyContentView(layout,new ViewGroup.LayoutParams(  WRAP_CONTENT,  WRAP_CONTENT));
@@ -708,7 +731,7 @@ static public void scheduleProfiles(MainActivity act,View parview) {
     recycle.setLayoutParams(new ViewGroup.LayoutParams( WRAP_CONTENT , WRAP_CONTENT));
     LinearLayoutManager lin = new LinearLayoutManager(act);
     recycle.setLayoutManager(lin);
-    Object[][] views;
+    View[][] views;
     if(isWearable) {
         views=new View[][]{new View[]{ok},new View[]{recycle},new View[]{newone}};
         }
@@ -720,11 +743,13 @@ static public void scheduleProfiles(MainActivity act,View parview) {
             help(R.string.schedulehelp,act);
             });
         views=new View[][]{new View[]{recycle},new View[]{help,newone,ok}};
+//        portraitViews=new View[][]{new View[]{recycle},new View[]{help,newone},new View[]{ok}};
         }
     var layout= new Layout(act, (l, w, h) -> {
     	int[] ret={w,h};
     	return ret;
     	},views);
+//    if(portraitViews!=null) layout.portraitLayout(portraitViews);
     var numadapt = new ProfileScheduleAdapter(layout); 
     recycle.setAdapter(numadapt);
     ok.setOnClickListener(v->{
@@ -836,10 +861,9 @@ static private void alarmsettings(MainActivity context,View parview) {
 
 
     var Save=getbutton(context,R.string.closename);
-//    var Cancel=getbutton(context,R.string.cancel);
      var advanced=getbutton(context,R.string.advanced);
-//    var schedules=getbutton(context,R.string.schedules);
-    Object[][] views;
+    View[][] views;
+    View[][] portraitViews=null;
     var spin=getProfileSpinner(context);
    int pos=Natives.getProfile();
     spin.setSelection(pos);
@@ -861,13 +885,20 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{adva
          View[] lostrow={lossalarm,losswait,min,ringlossalarm};
          View[] row6={usealarm,isvalue, ringisvalue};
          View[] rowshow={help,spin,advanced,Save};
-         var marg=(int)(GlucoseCurve.getwidth()*.05f);
+         var marg=(int)(tk.glucodata.GlucoseCurve.metrics.density*40.0);
 
         getMargins(help).setMarginStart(marg);
         getMargins(Save).setMarginEnd(marg);
 
+        getMargins(lowalarm[0]).topMargin=(int)(tk.glucodata.GlucoseCurve.metrics.density*8.0);
 
         views=new View[][]{lowalarm,highalarm,lostrow,row6,rowshow};
+        portraitViews=new View[][]{
+            new View[]{lowalarm[0]},new View[]{lowalarm[1],lowalarm[2]},
+            new View[]{highalarm[0]},new View[]{highalarm[1],highalarm[2]},
+            new View[]{lossalarm},new View[]{losswait,min,ringlossalarm},
+            new View[]{isvalue,ringisvalue},new View[]{alarmis,alarmtype},
+            new View[]{advanced,spin},new View[]{help,Save}};
         }    
     View lay;
         Layout layout = new Layout(context, (l, w, h) -> {
@@ -875,6 +906,8 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{adva
         int[] ret={w,h};
         return ret;
         },views);
+    if(portraitViews!=null)
+        layout.portraitLayout(portraitViews);
    if(isWearable) {
 //       layout.setPadding(0, (int) (GlucoseCurve.metrics.density*10),0,0);
       final int sidepad=(int)(GlucoseCurve.metrics.density*5);
@@ -882,7 +915,9 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{adva
        }
      else {
         final int sidepad=(int)(GlucoseCurve.metrics.density*8);
-        layout.setPadding(MainActivity.systembarLeft+sidepad,MainActivity.systembarTop*2/3,sidepad+MainActivity.systembarRight,sidepad+MainActivity.systembarBottom*9/10);
+        layout.systembarPadding((left,top,right,bottom)-> {
+              return   new int[]{left+sidepad,top*2/3,sidepad+right,sidepad+bottom*9/10};
+              });
         }
     var scroll=new ScrollView(context);    
     scroll.addView(layout);
@@ -891,12 +926,6 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{adva
    scroll.setScrollbarFadingEnabled(true);
    scroll.setVerticalScrollBarEnabled(Applic.scrollbar);
     lay=scroll;
-    /*
-    if(isWearable) {
-        }
-    else
-        lay=layout; */
-//    schedules.setOnClickListener(v->scheduleProfiles(context,lay));
         lay.setBackgroundColor(Applic.backgroundcolor);
     context.addMyContentView(lay, new ViewGroup.LayoutParams( MATCH_PARENT ,MATCH_PARENT));
 
@@ -907,13 +936,6 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{adva
     highalarm[2].setOnClickListener(v->{
         new tk.glucodata.RingTones(1).mkviews(context,context.getString(R.string.highglucosealarm),lay);
         });
-/*
-    context.setonback(() -> {
-        parview.setVisibility(VISIBLE);
-        tk.glucodata.help.hidekeyboard(context);
-        removeContentView(lay) ;
-        });
-*/
     usealarm.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setUSEALARM(isChecked));
 
     BooleanSupplier saver=() -> {
@@ -995,7 +1017,7 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{adva
 final private static String  codestr=String.valueOf(BuildConfig.VERSION_CODE);
 
 
-static private final List<String> supportedlanguages= Arrays.asList("Language","ar","be","de","en","es","fr","hi","it","ja","nl","pl","pt","ru","sv","tr","uk","uz","zh");
+static private final List<String> supportedlanguages= Arrays.asList("Language","ar","be","de","en","es","fr","hi","it","ja","ko","nl","pl","pt","ru","sv","tr","uk","uz","zh");
 
 static public Spinner getGenSpin(Activity context) {
     var spin=  new Spinner(context,isWearable?MODE_DIALOG: MODE_DROPDOWN);
@@ -1169,18 +1191,8 @@ Scans.setOnCheckedChangeListener( (buttonView,  isChecked) -> { Natives.setshows
         tk.glucodata.IOB.mkview(context);
         });
         var dexfuture=getcheckbox(context,R.string.dexfuture,Natives.getdexcomPredict());
-         dexfuture.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setdexcomPredict(isChecked) );
-         CheckDirectionBox reverseorientation;
-         if(canRotate) {
-            reverseorientation=getcheckbox(context,R.string.invertscreen,(Natives.getScreenOrientation()&SCREEN_ORIENTATION_REVERSE_LANDSCAPE)!=0);
-            reverseorientation.setOnCheckedChangeListener( (buttonView,  isChecked) ->  {
-                   int ori= (isChecked?SCREEN_ORIENTATION_REVERSE_LANDSCAPE:SCREEN_ORIENTATION_LANDSCAPE);
-                   Natives.setScreenOrientation(ori);
-                   });
-             }
-         else {
-           reverseorientation=null;
-           }
+        dexfuture.setOnCheckedChangeListener( (buttonView,  isChecked) -> Natives.setdexcomPredict(isChecked) );
+        var reverseorientation=getcheckbox(context,R.string.invertscreen,(Natives.getScreenOrientation()&SCREEN_ORIENTATION_REVERSE_LANDSCAPE)!=0);
 
    CheckDirectionBox levelleft= new CheckDirectionBox(context);
     levelleft.setText(R.string.glucoseaxisleft);
@@ -1190,31 +1202,96 @@ Scans.setOnCheckedChangeListener( (buttonView,  isChecked) -> { Natives.setshows
              Natives.setlevelleft(isChecked);
             });
 
-        var amarg=(int)( .15f*GlucoseCurve.getwidth());
+//        var amarg=(int)( .15f*GlucoseCurve.getwidth());
+        var amarg= (int)(tk.glucodata.GlucoseCurve.metrics.density*40.0);
 
         Layout.getMargins(colbut).setMarginStart(amarg);
 
         Layout.getMargins(close).setMarginEnd(amarg);
         var themebut=getbutton(context,R.string.theme);
-        Object[][] displayRowsLandscape = new Object[][]{graphrow,new View[]{scalelabel,fixatex, fixatey},targetrow,new View[]{threslabel,threshold,dexfuture},new View[] {levelleft,reverseorientation},new View[] {hour12,langspin,iob,fixed},new View[]{colbut,themebut,help,close}};
-        Object[][] displayRowsPortrait = new Object[][]{graphrow,new View[]{scalelabel},new View[]{fixatex, fixatey},targetrow,new View[]{threslabel,threshold},new View[]{dexfuture},new View[] {levelleft,reverseorientation},new View[] {hour12,langspin},new View[]{iob,fixed},new View[]{colbut,themebut},new View[]{help,close}};
+        var didautorotate=Natives.getRotate();
+
+        var rotateText=getcheckbox(context,R.string.rotateText,Natives.getRotateText());
+        var autorotate=getcheckbox(context,R.string.autorotate,didautorotate);
+
+        /* A managed/work profile can have its own ACCELEROMETER_ROTATION row,
+         * different from the parent user's physical-display rotation policy.
+         * When Juggluco Auto-rotate is enabled, MainActivity therefore lets
+         * SCREEN_ORIENTATION_FULL_USER defer to WindowManager.  Use the same
+         * rule here, otherwise the Work Profile incorrectly hides Rotate text. */
+        final boolean managedProfile;
+        if(android.os.Build.VERSION.SDK_INT>=android.os.Build.VERSION_CODES.N) {
+            var userManager=(android.os.UserManager)context.getSystemService(android.content.Context.USER_SERVICE);
+            managedProfile=userManager!=null&&userManager.isManagedProfile();
+            }
+        else
+            managedProfile=false;
+
+        /* These controls are local to displaysettings(): whether they have an
+         * effect is a property of the current display/orientation policy, not
+         * persistent Settings object state. */
+        Runnable updateOrientationOptionVisibility=()-> {
+            final var config=context.getResources().getConfiguration();
+            final boolean largeScreen=config.smallestScreenWidthDp>=600;
+            final int shortSide=Math.min(config.screenWidthDp,config.screenHeightDp);
+            final int longSide=Math.max(config.screenWidthDp,config.screenHeightDp);
+            final boolean elongated=shortSide>0&&((float)longSide/shortSide)>=1.45f;
+            final boolean nearlySquare=largeScreen&&!elongated;
+            final boolean systemAutoRotate=managedProfile||android.provider.Settings.System.getInt(
+                    context.getContentResolver(),
+                    android.provider.Settings.System.ACCELEROMETER_ROTATION,1)!=0;
+            final boolean effectiveAutoRotate=Natives.getRotate()&&systemAutoRotate;
+            final boolean android16LargeRestriction=android.os.Build.VERSION.SDK_INT>=36
+                    &&context.getApplicationInfo().targetSdkVersion>=36;
+
+            final boolean orientationHasEffect;
+            if(nearlySquare)
+                orientationHasEffect=false;
+            else if(!effectiveAutoRotate&&largeScreen&&elongated&&android16LargeRestriction)
+                orientationHasEffect=false;
+            else if(!effectiveAutoRotate)
+                orientationHasEffect=true;
+            else
+                orientationHasEffect=!Natives.getRotateText();
+
+            final boolean rotateTextHasEffect=effectiveAutoRotate&&!nearlySquare;
+            reverseorientation.setVisibility(orientationHasEffect?VISIBLE:INVISIBLE);
+            rotateText.setVisibility(rotateTextHasEffect?VISIBLE:INVISIBLE);
+            };
+
+        reverseorientation.setOnCheckedChangeListener( (buttonView,  isChecked) ->  {
+                int ori= (isChecked?SCREEN_ORIENTATION_REVERSE_LANDSCAPE:SCREEN_ORIENTATION_LANDSCAPE);
+                Natives.setScreenOrientation(ori);
+                context.applyScreenOrientation(context.getResources().getConfiguration());
+                });
+        autorotate.setOnCheckedChangeListener( (buttonView,  isChecked) -> {
+                setAutoRotateOn(context,isChecked);
+                updateOrientationOptionVisibility.run();
+                });
+        rotateText.setOnCheckedChangeListener( (buttonView,  isChecked) -> {
+            Natives.setRotateText(isChecked);
+            context.applyScreenOrientation(context.getResources().getConfiguration());
+            updateOrientationOptionVisibility.run();
+            });
+
+        updateOrientationOptionVisibility.run();
+
         lay = new Layout(context, (l, w, h) -> {
                   int[] ret={w,h};
                  return ret;
-               },Layout.portraitRows(displayRowsPortrait,displayRowsLandscape));
+               },graphrow,new View[]{scalelabel,fixatex, fixatey},targetrow,new View[]{threslabel,threshold,dexfuture},new View[] {levelleft,autorotate,rotateText,reverseorientation},new View[] {hour12,langspin,iob,fixed},new View[]{colbut,themebut,help,close})
+               .portraitLayout(
+                    new View[]{graphlabel,glow,line,ghigh},
+                    new View[]{scalelabel},new View[]{fixatex,fixatey},
+                    new View[]{targetlabel,tlow,line2,thigh},
+                    new View[]{threslabel,threshold},new View[]{dexfuture},
+                    new View[]{levelleft},new View[]{reverseorientation},new View[]{autorotate,rotateText},
+                    new View[]{hour12,fixed},new View[]{langspin,iob},
+                    new View[]{help,themebut},new View[]{colbut,close});
 
        themebut.setOnClickListener(v-> {
             SelectTheme.show(context,lay);
             });
-/*
-        iob.setOnCheckedChangeListener( (buttonView,  isChecked) -> {
-                if(!Natives.setIOB(isChecked)) {
-                    iob.setChecked(false);
-                    EnableControls(lay,false);
-                    tk.glucodata.help.help(R.string.IOB,context,l->EnableControls(lay,true) );
-                    }
-                }
-            ); */
          }
 
      lay.setBackgroundColor(Applic.backgroundcolor);
@@ -1224,7 +1301,8 @@ Scans.setOnCheckedChangeListener( (buttonView,  isChecked) -> { Natives.setshows
         }
      else {
       final   int pad=(int)(tk.glucodata.GlucoseCurve.metrics.density*8.0);
-       lay.setPadding(MainActivity.systembarLeft+pad,MainActivity.systembarTop*3/4,pad+MainActivity.systembarRight,pad+MainActivity.systembarBottom*3/4);
+       lay.systembarPadding((left,top,right,bottom)->
+               new int[]{left+pad,top*3/4,pad+right,pad+bottom*3/4});
       }
 
     var scroll=new ScrollView(context);
@@ -1398,7 +1476,8 @@ private    void mksettings(MainActivity context) {
     Button advanced=null;
 
 
-    Object[][] views;
+    View[][] views;
+    View[][] portraitViews=null;
     final String advhelp=isWearable?null:Natives.advanced();
 
         var calibration=  getbutton(context,R.string.calibration);
@@ -1450,11 +1529,11 @@ private    void mksettings(MainActivity context) {
         floatglucose.setOnCheckedChangeListener( (buttonView,  isChecked) -> Floating.setfloatglucose(context,isChecked) ) ;
         View[] camornum=new View[] {alarmbut,numalarm};
         if(BuildConfig.minSDK>=26) {
-            views = new View[][]{new View[]{displayview},row0, hasnfc ? (new View[]{globalscan, nfcsound}) : null,new View[]{floatconfig, floatglucose},new View[]{complications},talkrow, new View[]{exchanges },new View[]{calibration},   camornum, new View[]{close}, new View[]{getlabel(context, BuildConfig.BUILD_TIME)}, new View[]{getlabel(context, BuildConfig.VERSION_NAME)}, new View[]{getlabel(context, codestr)}};
+            views = new View[][]{new View[]{displayview},row0, hasnfc ? (new View[]{globalscan, nfcsound}) : null,new View[]{floatconfig, floatglucose},new View[]{complications},talkrow, new View[]{exchanges },new View[]{calibration},   camornum, new View[]{close}, new View[]{getlabel(context, tk.glucodata.BuildTime.TIME)}, new View[]{getlabel(context, BuildConfig.VERSION_NAME)}, new View[]{getlabel(context, codestr)}};
             ;
         }
         else{
-            views = new View[][]{new View[]{displayview},row0,    hasnfc ? (new View[]{globalscan, nfcsound}) : null, new View[]{floatconfig, floatglucose},talkrow,  new View[]{exchanges },new View[]{calibration},     camornum,new View[]{close},  new View[]{getlabel(context, BuildConfig.BUILD_TIME)}, new View[]{getlabel(context, BuildConfig.VERSION_NAME)}, new View[]{getlabel(context, codestr)}};
+            views = new View[][]{new View[]{displayview},row0,    hasnfc ? (new View[]{globalscan, nfcsound}) : null, new View[]{floatconfig, floatglucose},talkrow,  new View[]{exchanges },new View[]{calibration},     camornum,new View[]{close},  new View[]{getlabel(context, tk.glucodata.BuildTime.TIME)}, new View[]{getlabel(context, BuildConfig.VERSION_NAME)}, new View[]{getlabel(context, codestr)}};
             ;
         }
         }
@@ -1548,8 +1627,7 @@ private    void mksettings(MainActivity context) {
 
         View[] rowglu=new View[]{floatconfig,calibration,glucosenotify};
 
-        // ── Filas para landscape (múltiples ítems por fila) ──────────────────
-        final Object[][] landscapeViews = new Object[][]{
+        views = new View[][]{
             row0,
             hasnfc ? new View[]{nfcsound, globalscan, camera} : null,
             new View[]{orientLabel, orientSpin},
@@ -1560,32 +1638,43 @@ private    void mksettings(MainActivity context) {
             row9
         };
 
-        // ── Filas para portrait (máx 2 ítems por fila para evitar corte) ────
-        final Object[][] portraitViews = new Object[][]{
-            row0,
-            hasnfc ? new View[]{nfcsound, globalscan} : null,
-            hasnfc && camera != null ? new View[]{camera} : null,
-            new View[]{orientLabel, orientSpin},
-            new View[]{vicoToggle},
-            new View[]{floatconfig, calibration},
-            new View[]{glucosenotify},
-            new View[]{exchanges, numalarm},
-            new View[]{alarmbut},
-            numdis.length > 2
-                ? new View[]{numdis[0], numdis[1]}
-                : numdis,
-            numdis.length > 2
-                ? java.util.Arrays.copyOfRange(numdis, 2, numdis.length)
-                : null,
-            advhelp != null
-                ? new View[]{help, advanced}
-                : new View[]{help},
-            new View[]{intro, about},
-            new View[]{close}
-        };
-
-        views = Layout.portraitRows(portraitViews, landscapeViews);
+        if (advhelp != null) {
+            portraitViews = new View[][]{
+                row0,
+                hasnfc ? new View[]{nfcsound} : null,
+                hasnfc ? new View[]{globalscan} : null,
+                hasnfc ? new View[]{camera} : null,
+                new View[]{orientLabel, orientSpin},
+                new View[]{vicoToggle},
+                new View[]{floatconfig, calibration},
+                new View[]{glucosenotify},
+                new View[]{exchanges, numalarm},
+                new View[]{alarmbut},
+                new View[]{numdis[0], numdis[1]},
+                doLog ? new View[]{numdis[2], numdis[3]} : new View[]{numdis[2]},
+                new View[]{help, advanced},
+                new View[]{intro, about},
+                new View[]{close}
+            };
+        } else {
+            portraitViews = new View[][]{
+                row0,
+                hasnfc ? new View[]{nfcsound} : null,
+                hasnfc ? new View[]{globalscan} : null,
+                hasnfc ? new View[]{camera} : null,
+                new View[]{orientLabel, orientSpin},
+                new View[]{vicoToggle},
+                new View[]{floatconfig, calibration},
+                new View[]{glucosenotify},
+                new View[]{exchanges, numalarm},
+                new View[]{alarmbut},
+                new View[]{numdis[0], numdis[1]},
+                doLog ? new View[]{numdis[2], numdis[3]} : new View[]{numdis[2]},
+                new View[]{about, intro},
+                new View[]{help, close}
+            };
         }
+    }
 
     help.setFocusableInTouchMode(true);
     help.setFocusable(true);
@@ -1597,6 +1686,8 @@ private    void mksettings(MainActivity context) {
         
         return ret;
         },views);
+    if(portraitViews!=null)
+        lay.portraitLayout(portraitViews);
 
      exchanges.setOnClickListener(v->{
         exchanges(context,lay);
@@ -1637,7 +1728,8 @@ private    void mksettings(MainActivity context) {
       lay.setPaddingRelative((int)(tk.glucodata.GlucoseCurve.metrics.density*5.5),(int)(tk.glucodata.GlucoseCurve.metrics.density*11.0),(int)(tk.glucodata.GlucoseCurve.metrics.density*14.0),pad);
         }
      else {
-       lay.setPadding(MainActivity.systembarLeft+pad,MainActivity.systembarTop*3/4,pad+MainActivity.systembarRight,pad+MainActivity.systembarBottom*3/4);
+       lay.systembarPadding((left,top,right,bottom)->
+               new int[]{left+pad,top*3/4,pad+right,pad+bottom*3/4});
       }
 
     final    int laywidth=MATCH_PARENT;
@@ -1669,6 +1761,12 @@ setvalues();
 @SuppressLint("UseCompatLoadingForDrawables")
 static private void exchanges(MainActivity context, View parent) {
   parent.setVisibility(GONE);
+ /* 
+   var emulator=getbutton(context,R.string.l3emu_title);
+   emulator.setOnClickListener(v -> tk.glucodata.Libre3Emulator.show(context));
+   if(BuildConfig.libreVersion!=3 || Build.VERSION.SDK_INT<26) emulator.setVisibility(GONE);
+
+   */
     final CheckDirectionBox xdripbroadcast = new CheckDirectionBox(context);
     final CheckDirectionBox jugglucobroadcast = new CheckDirectionBox(context);
 
@@ -1719,17 +1817,26 @@ static private void exchanges(MainActivity context, View parent) {
         lay = new Layout(context, (l, w, h) -> {
             int[] ret = {w, h};
             return ret;
-        },new View[]{xdripbroadcast},new View[]{uploader,mirrorview}  ,new View[]{jugglucobroadcast}, new View[]{ok});
+        },new View[]{xdripbroadcast},new View[]{uploader,mirrorview}  ,new View[]{jugglucobroadcast}, /*new View[]{emulator},*/ new View[]{ok});
 
    final var density=tk.glucodata.GlucoseCurve.metrics.density;
         lay.setPadding((int)(density*8.0),(int)(density*25.0),(int)(density*8.0),(int)(density*2.0));
     } else {
+    /*
+        var nfcemu=getbutton(context,"NFC emu");
+        nfcemu.setOnClickListener(v -> tk.glucodata.Libre3NfcEmulator.starttestemu());
+        */
+        var clarity = getbutton(context, "Dexcom Clarity");
+        clarity.setOnClickListener(v -> tk.glucodata.Clarity.show(context,thelayout[0]));
         var uploader = getbutton(context, R.string.uploader);
         uploader.setOnClickListener(v -> tk.glucodata.NightPost.config(context, thelayout[0]));
         final CheckDirectionBox librelinkbroadcast = new CheckDirectionBox(context);
         final CheckDirectionBox libreview = new CheckDirectionBox(context);
         final CheckDirectionBox everSensebroadcast = new CheckDirectionBox(context);
         final var healthconnect = (isWearable || Build.VERSION.SDK_INT < 28) ? null : getcheckbox(context, "Health Connect", Natives.gethealthConnect());
+        final var activities = getbutton(context, R.string.activity_import);
+        activities.setOnClickListener(v -> tk.glucodata.ActivitySettings.show(context, thelayout[0]));
+        if(isWearable || Build.VERSION.SDK_INT<28 || !tk.glucodata.ActivityHealth.available()) activities.setVisibility(View.GONE);
         final boolean wasxdrip = Natives.getuselibreview();
         final boolean usedlibrebroad = Natives.getlibrelinkused();
         libreview.setText(R.string.libreviewname);
@@ -1806,11 +1913,18 @@ static private void exchanges(MainActivity context, View parent) {
         lay = new Layout(context, (l, w, h) -> {
             int[] ret = {w, h};
             return ret;
-        }, new View[]{everSensebroadcast,librelinkbroadcast},new View[]{xdripbroadcast, jugglucobroadcast}, new View[]{webserver, uploader, libreview}, (Build.VERSION.SDK_INT >= 28) ? new View[]{healthconnect,exportview,mirrorview} :new View[]{exportview,mirrorview},
-                new View[]{help,meters, ok});
+        }, new View[]{everSensebroadcast,librelinkbroadcast},new View[]{xdripbroadcast, jugglucobroadcast},Build.VERSION.SDK_INT >= 28 ?new View[]{healthconnect,activities,clarity,libreview}:new View[]{clarity,libreview}, new View[]{webserver, uploader,exportview,mirrorview} ,                /*new View[]{emulator},*/new View[]{help,meters, ok})
+            .portraitLayout(
+                new View[]{everSensebroadcast},new View[]{librelinkbroadcast},
+                new View[]{xdripbroadcast},new View[]{jugglucobroadcast},
+                new View[]{webserver,uploader},new View[]{clarity,libreview},
+                (Build.VERSION.SDK_INT >= 28)?new View[]{healthconnect,activities}:null,
+                new View[]{exportview,mirrorview},/*new View[]{emulator},*/new View[]{help,meters},new View[]{ok});
 
     final   int pad=(int)(tk.glucodata.GlucoseCurve.metrics.density*10.0);
-        lay.setPadding(MainActivity.systembarLeft,MainActivity.systembarTop*3/4,MainActivity.systembarRight+pad,MainActivity.systembarBottom*7/8+(int)(tk.glucodata.GlucoseCurve.metrics.density*5.0));
+    final   int bottompad=(int)(tk.glucodata.GlucoseCurve.metrics.density*5.0);
+        lay.systembarPadding((left,top,right,bottom)->
+                new int[]{left,top*3/4,right+pad,bottom*7/8+bottompad});
         exportview.setOnClickListener(v ->{
             var c=Applic.app.curve;
             if(c!=null) {
@@ -1843,5 +1957,8 @@ public static void   removeContentView(View view) {
     }
 
 //@Override
-
+private static void setAutoRotateOn(MainActivity act,boolean isChecked) {
+     Natives.setRotate(isChecked);
+     act.applyScreenOrientation(act.getResources().getConfiguration());
+     }
 }

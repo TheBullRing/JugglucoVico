@@ -99,12 +99,12 @@ const jugglucotext hitext {
 	.duration="अवधि: %.1f दिन",
 	.timeactive="%.1f%% समय सक्रिय",
 	.nrmeasurement="मापों की संख्या: %d",
-	.EstimatedA1C="अनुमानित A1C: %.1f%% (%d mmol/mol)",
+	.EstimatedA1C="uGMI ≈ अनुमानित A1C: %.1f%% (%d mmol/mol)",
 	.GMI="ग्लूकोज प्रबंधन सूचक: %.1f%% (%d mmol/mol)",
 	.SD="SD: %.2f",
 	.glucose_variability="ग्लूकोज परिवर्तनशीलता: %.1f%%",
      .menustr0={
-		"सिस्टम UI",
+		"ChatGPT",
 		"मेन्यू",
 		"घड़ी",
 		"सेंसर",
@@ -132,7 +132,7 @@ const jugglucotext hitext {
 		"बोलें",
 		"फ्लोट"
 		},
-	.menustr2= {"अंतिम स्कैन",
+	.menustr2= {"सिस्टम UI",
 	"स्कैन",
 	"स्ट्रीम",
 	"इतिहास",

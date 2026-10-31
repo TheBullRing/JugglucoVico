@@ -413,6 +413,8 @@ union {
         struct {
               uint16_t wearduration2;
               uint8_t warmup2;
+              // Unused bytes of the existing Libre 3 ident union; no layout change.
+              uint16_t lingoSecurityVersion;
            };
         struct {
               uint16_t askEarlier;
@@ -458,7 +460,8 @@ uint32_t lockcount;
 int8_t streamingIsEnabled;
 int8_t patchState; //Used for Libre3 reused for AidexX add starttime
 uint8_t manualwarmup;
-uint8_t reserved4:4;
+uint8_t reserved4:3;
+bool lingo:1;
 bool isAidexX:1;
 bool air:1;
 bool accuChek:1;
@@ -577,6 +580,15 @@ std::span<const uint8_t> getauth() const {
 
 int getStreamStart() const {
     return std::max(pollstart,(uint16_t)warmupstartpos);
+    }
+
+
+
+bool unused() const {
+    const auto *info=this;
+    const int un=(info->pollcount==0&&info->scancount==0&&info->endhistory==0);
+    LOGGER("unused()=%d\n",un);
+    return un;
     }
 } ;
 //pathconcat sensordir;
@@ -1145,7 +1157,7 @@ static bool mkdatabase(string_view sensordir,time_t start,const  char *uid,const
         Readall<uint8_t> inf(infoname);
         if(inf.data()&&inf.size()>=sizeof(Info)) {
             const Info *in=reinterpret_cast<const Info*>(inf.data());
-            if(in->starttime>1590000000&&in->dupl>0&&in->info.len==6)
+            if(!in->unused()&&in->starttime>1590000000&&in->dupl>0&&in->info.len==6)
                 return false;
             }
         }
@@ -1197,6 +1209,9 @@ E07A-000T3YL1R50
  bool isLibre3() const {
     return !isAir()&&!isAidexX()&&!isAccuChek()&&!isSibionics()&&!isDexcom()&&(getinfo()->interval==interval5);
     }
+ bool isLingo() const {
+    return isLibre3() && getinfo()->lingo;
+    }
  bool isLibre2() const {
    return !(isAccuChek()||isSibionics()||isAidexX()||isDexcom()||isAir()||getinfo()->interval==interval5);
    }
@@ -1235,7 +1250,7 @@ static bool mkdatabase3(string_view sensordir,time_t start,uint32_t pin,const ch
         Readall<uint8_t> inf(infoname);
         if(inf.data()&&inf.size()>=sizeof(Info)) {
             const Info *in=reinterpret_cast<const Info*>(inf.data());
-            if(in->starttime>1590000000&&in->dupl>0&&in->interval==interval5)
+            if(!in->unused()&&in->starttime>1590000000&&in->dupl>0&&in->interval==interval5)
                 return false;
             }
         }
@@ -1278,7 +1293,7 @@ static bool mkdatabaseSI3(string_view sensordir,string_view sensorgegs,uint32_t 
     return true;
     }
 
-static bool mkdatabaseSI(string_view sensordir,string_view sensorgegs,uint32_t now,bool hasnum) {
+static bool mkdatabaseSI(string_view sensordir,string_view sensorgegs,uint32_t now,bool hasnum,uint8_t maxdays) {
      LOGGER("mkdatabaseSI %s,%s\n",sensordir.data(),sensorgegs.data());
     mkdir(sensordir.data(),0700);
     pathconcat infoname(sensordir,infopdat);
@@ -1295,7 +1310,7 @@ static bool mkdatabaseSI(string_view sensordir,string_view sensorgegs,uint32_t n
   //  const bool sib2=sensorgegs.size()==59;
         
 
-       Info inf{.starttime=(uint32_t)start,.lastscantime=(uint32_t)start,.starthistory=0,.endhistory=0,.scancount=0,.startid=0,.interval=interval5,.dupl=3,.days=maxdaysSI ,.sibionics=true,.lastLifeCountReceived=0,.siType=0,.pollcount=0,.pollinterval=88.0, .lockcount=1};
+       Info inf{.starttime=(uint32_t)start,.lastscantime=(uint32_t)start,.starthistory=0,.endhistory=0,.scancount=0,.startid=0,.interval=interval5,.dupl=3,.days=maxdays ,.sibionics=true,.lastLifeCountReceived=0,.siType=0,.pollcount=0,.pollinterval=88.0, .lockcount=1};
        inf.siIdlen=sensorgegs.size();
        memcpy(inf.siId,sensorgegs.data(),inf.siIdlen);
        if(hasnum) {
@@ -1379,7 +1394,7 @@ static bool mkdatabaseAccu(string_view sensordir,string_view sensorgegs,uint32_t
 #endif
 #ifdef DEXCOM
 static bool mkdatabaseDex(string_view sensordir,string_view sensorgegs,uint32_t now,uint8_t days) {
-   LOGGER("mkdatabaseDex %s,%s\n",sensordir.data(),sensorgegs.data());
+   LOGGER("mkdatabaseDex %s,%s days=%d\n",sensordir.data(),sensorgegs.data(),(int)days);
     mkdir(sensordir.data(),0700);
     pathconcat infoname(sensordir,infopdat);
     if(access(infoname,F_OK)!=-1)  {
@@ -1440,9 +1455,7 @@ bool bluetoothback() {
 bool unused() const {
     const auto *info=getinfo();
     if(info)  {
-        const int un=(info->pollcount==0&&info->scancount==0&&info->endhistory==0);
-        LOGGER("unused()=%d\n",un);
-        return un;
+        return info->unused();
         }
     LOGGER("unused %p->getinfo()==null\n",this);
     return false;
@@ -1530,7 +1543,7 @@ if(const ScanData *last=lastpoll()) {
     if(last->g) {
         lastlifecount=last->id;;
         timelastcurrent=last->t;
-        LOGGER("lastlifecount=%d %s",lastlifecount,ctime(&timelastcurrent));
+        LOGGER("waslast: lastlifecount=%d %s",lastlifecount,ctime(&timelastcurrent));
         }
     int start=getStreamStart();
     if((start+1)<pollcount()) {
@@ -1544,6 +1557,13 @@ if(const ScanData *last=lastpoll()) {
             }
         }
     }
+  else {
+        if(isLibre3()) {
+                lastlifecount=0;
+                timelastcurrent=getstarttime()+60;
+                LOGGER("no data: lastlifecount=%d %s",lastlifecount,ctime(&timelastcurrent));
+                }
+        }
    if(!(isAccuChek()||isSibionics()||isDexcom()||isAir()||isAidexX())) {
       LOGGER("getinfo()->lastHistoricLifeCountReceivedPos=%d\n", getinfo()->lastHistoricLifeCountReceivedPos);
       if(!getinfo()->lastHistoricLifeCountReceivedPos) getinfo()->lastHistoricLifeCountReceivedPos=12;
@@ -1734,9 +1754,19 @@ bool saveStreamAgain(time_t tim,int id,int glu,int trend,float change) {
     getinfo()->pollcount=count;
     return false;
     }
-void saveglucosedata(Mmap<ScanData> &streamscans,uint32_t &count,time_t tim,int id,int glu,int trend,float change) {
+
+
+ void saveglucosedata(Mmap<ScanData> &streamscans,uint32_t &count,time_t tim,int id,int glu,int trend,float change) {
+     const auto capacity=streamscans.count();
+     if(count>=capacity) {
+        LOGGER("saveglucosedata: full count=%u capacity=%zu id=%d time=%lld\n",
+               count,capacity,id,static_cast<long long>(tim));
+        return;
+        }
      streamscans[count++]={static_cast<uint32_t>(tim),id,glu,trend,change};
-    }
+     }
+
+
 bool hasStreamID(const int id,const uint32_t eventtime) const {
     return polls[id].id==id&&polls[id].g&&!isnan(polls[id].getchange())&&abs((int)(polls[id].gettime()-eventtime))<60;
     }
@@ -1937,16 +1967,18 @@ void updateinit(const int ind) {
 
 static  const ScanData *firstnotless(std::span<const ScanData> dat,const uint32_t start) {
        const ScanData *scan=&dat.begin()[0];
-       if(dat.size()<1)
+       if(dat.empty())
             return scan;
-        const ScanData *endscan= &dat.end()[0];
+
+//        const ScanData *endscan= &dat.end()[0];
+        const ScanData *endscan = scan + dat.size();
         const ScanData scanst{.t=start};
         auto comp=[](const ScanData &el,const ScanData &se ){return el.t<se.t;};
         return std::lower_bound(scan,endscan, scanst,comp);
     }
 static CurData curInperiod(std::span<const ScanData> dat,const uint32_t starttime,const uint32_t endtime) {
     const ScanData *scan=&dat.begin()[0];
-    if(dat.size()<1)
+    if(dat.empty())
         return {scan,scan,scan};
     const ScanData *endscan= &dat.end()[0];
     auto comp=[](const ScanData &el,const ScanData &se ){return el.t<se.t;};
@@ -2514,6 +2546,8 @@ static int getmaxmgdL(int sensorgen)  {
         };
     };
 int getmaxmgdL() const {
+        if(isLingo())
+                return 200;
         if(isDexcom()||isAccuChek())
                 return 400;
         if(isSibionics()||isAidexX())
@@ -2667,7 +2701,9 @@ int getMinimalWarmup() const {
 std::atomic_flag processing{}; 
 
 void useAgain() {
+    extern void   sendKAuth(SensorGlucoseData *hist);
        auto *info= getinfo();
+       info->haskAuth=false;
        info->lastscantime=time(nullptr);
        }
 
@@ -2687,6 +2723,26 @@ uint32_t getRestartTime() const {
     LOGGER("getRestartTime()=%u\n",starttime);
     return starttime;
     }
+
+
+bool lastLifeCountReceivedUser() const { //Used to signify last backfilled value
+    return isLibre3() || isDexcom() ||isAidexX();
+    }
+
+
+std::span<const ScanData> getDefiniteStream() const { //gives definite stream values, which will not be changed later by backfill
+    if(lastLifeCountReceivedUser()) {
+            const int start=getStreamStart();
+            int  last=std::min(getinfo()->lastLifeCountReceived+1,pollcount());
+            int len=last-start;
+            if(len<0)
+                len=0;
+            return std::span<const ScanData>(polls.data()+start,len);
+            }
+     else 
+             return getPolldata();
+    }
+
 };
 struct lastscan_t {
     int sensorindex;
@@ -2765,4 +2821,3 @@ private:
    SensorGlucoseData *sens;
    int index;
 };
-

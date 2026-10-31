@@ -72,7 +72,7 @@ struct Settings;
 extern Settings *settings;
 //s/\([0-9a-zA-Z][0-9a-zA-Z]\)/0x\1,/g
 constexpr const    uint8_t defaultid[]= {
-#ifdef RELEASEID
+#if defined(RELEASEID) &&  RELEASEID==1
 0xfd,0x29,0x8a,0xf3,0xf2,0xdf,0x4e,0xf0,0x92,0x59,0x3d,0xb8,0x75,0xbb,0xf5,0xc9
 
 #else
@@ -215,7 +215,7 @@ struct Tings {
     bool USE_ALARMoff:1;
     bool watchdrip:1;
     bool android13:1;
-    bool saytreatments:1;
+    bool GiveAmounts:1;
     bool useSSL:1;
     bool floatingNotTouchable:1;
     bool hour24:1;
@@ -412,7 +412,9 @@ struct Tings {
     uint8_t alarmSoundType;
     uint8_t radius;
     uint8_t Theme;
-    uint8_t reserved5:3;
+    uint8_t reserved5:1;
+    bool rotateText:1;
+    bool Rotate:1;
     bool isOval:1;
     bool timeOnComplication:1;
     bool askedWatchFace:1;
@@ -423,7 +425,20 @@ struct Tings {
     uint32_t reserved4;
     GlucoseMeter  glucosemeters[maxglucosemeters];
     uint8_t gs3id[12];
-    uint32_t reserved32;
+    bool reserved8b;
+    bool newLibre3ReceiverIDreceived;
+    bool newLibre3Activation;
+    bool newLibre3Takeover;
+    int64_t newLibre3ReceiverID;
+    // Keep new persistent fields at the end to preserve existing mmap offsets.
+    struct ClaritySettingsData {
+        uint32_t version;
+        uint32_t since;
+        uint8_t enabled;
+        uint8_t libre3History;
+        uint8_t numbers;
+        uint8_t reserved;
+    } clarity;
 
 static bool meterMatch(const struct GlucoseMeter &meter,const std::string_view deviceName,uint8_t *address)  {
     if(address) {
@@ -1017,7 +1032,8 @@ Settings(const char *settingsname,const char *base,const char *country): Mmap(se
     setconvert(country);
 
      showui=getui();
-
+    if(!data()->httpport)
+        data()->httpport=defaulthttpport;
 }
 
 

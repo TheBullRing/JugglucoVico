@@ -53,6 +53,7 @@ using namespace std::literals;
 #include "destruct.hpp"
 #include "PlaceBuf.hpp"
 #include "ICEConnect.hpp"
+#include "juice/juggluco.h"
 
 constexpr const int maxconnectionunused=24*60*60;
 extern uint32_t getConnectTime(const int allindex);
@@ -73,6 +74,14 @@ int hostselect(std::string_view name) {
     return hash;
     }
 int port{6789};
+// Select from this installation's private host list, using the existing CRC32 rule.
+// Dedicated ChatGPT sessions do not create or alter mirror hosts.
+std::string jgice_signal_hostname(std::string_view label) {
+    if(nrhostnames == 0) return {};
+    return std::string(hostnames[hashfunc(label.data(),static_cast<int>(label.size())) % nrhostnames]);
+}
+int jgice_signal_port() { return port; }
+
 #ifndef LOGGER
 #define LOGGER(...) fprintf(stderr,__VA_ARGS__)
 #endif
@@ -80,16 +89,18 @@ int port{6789};
 
 #define JUICE_ERR_SUCCESS 0
 
-static bool stillworking(int allindex)  {
-    ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
-    bool res=con&&!con->finish&&con->allindex==allindex;
+static bool isStillUsable(int allindex)  {
+    const auto con=getconnectionas<ICEConnect>(allindex);
+    const bool res=con&&!con->finish&&con->allindex==allindex;
     if(!res)  {
-        LOGGERICE("stillworking(%d)=%d\n",allindex,res);
+        LOGGERICE("1: isStillUsable(%d)=%d\n",allindex,res);
+        return res;
         }
    else {
-        return getBackupHosts()[allindex].ICE;
+        const bool ice=getBackupHosts()[allindex].ICE;
+        LOGGERICE("2: isStillUsable(%d)=%d\n",allindex,ice);
+        return ice;
         }
-    return res;
     }
 const char *juiceErrorString(int error) {
     switch(error) {
@@ -184,7 +195,7 @@ static void getAddressesThread(juice_agent *agent,std::string_view commonLabel,b
 
 static void on_candidate1(juice_agent_t *agent, const char *sdp, void *user_ptr) {
    const int allindex=(int)(long)user_ptr;
-    ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+    auto con=getconnectionas<ICEConnect>(allindex);
 
    const passhost_t &host= getBackupHosts()[allindex];
    static std::string_view address{"/address"};
@@ -212,7 +223,7 @@ static void on_gathering_done1(juice_agent_t *agent, void *user_ptr) {
     std::thread th{[allindex] {
         const passhost_t &host= getBackupHosts()[allindex];
         LOGGERICE("Gathering done %s %d\n",host.getICEname().data(),host.side);
-        ICEConnect *con=static_cast<ICEConnect*>(connections[allindex]);
+        auto con=getconnectionas<ICEConnect>(allindex);
         if(!con) {
             LOGGERICE("connection[%d]==NULL\n",allindex);
             return;
@@ -252,11 +263,16 @@ static void on_recv1(juice_agent_t *agent, const char *data, size_t size, void *
             LOGGERICE("ERROR: on_recv1 called on non-ICE host allindex=%d name=%s\n",allindex, host.getICEname());
             return;
             }
-    ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+    auto con=getconnectionas<ICEConnect>(allindex);
     ICE_data *userdata=con->icedata;
     udp_header  *head=const_cast<udp_header *>(reinterpret_cast<const udp_header *>(data));
     userdata[head->side!=host.side].on_recv(agent,data,size,allindex);
     }
+
+
+
+
+
 
 static bool diagnostics(juice_agent *agent,const char *name,bool side) {
     bool success=true;
@@ -272,11 +288,12 @@ static bool diagnostics(juice_agent *agent,const char *name,bool side) {
         success=false;
         }
     // Retrieve addresses
-    char localAddr[JUICE_MAX_ADDRESS_STRING_LEN];
-    char remoteAddr[JUICE_MAX_ADDRESS_STRING_LEN];
-    if (int res=juice_get_selected_addresses_inc_type(agent, localAddr, JUICE_MAX_ADDRESS_STRING_LEN, remoteAddr, JUICE_MAX_ADDRESS_STRING_LEN);res == 0) {
-        LOGGERICE("%s %d: Local address: %s\n", name,side,localAddr);
-        LOGGERICE("%s %d: Remote address: %s\n", name,side,remoteAddr);
+    char localAddr[JUICE_MAX_TYPED_ADDRESS_STRING_LEN];
+    char remoteAddr[JUICE_MAX_TYPED_ADDRESS_STRING_LEN];
+    if (int res = juice_get_selected_addresses_inc_type(agent, localAddr, sizeof(localAddr), remoteAddr, sizeof(remoteAddr)); res == JUICE_ERR_SUCCESS) {
+
+    LOGGERICE("%s %d: Local address: %s\n", name,side,localAddr);
+    LOGGERICE("%s %d: Remote address: %s\n", name,side,remoteAddr);
     }
    else {
         LOGGERICE("%s %d: juice_get_selected_addresses failed: %s (%d)\n",name,side,juiceErrorString(res),res);
@@ -302,11 +319,12 @@ extern void receiverthread(passhost_t *host,const int allindex);
 static void on_state_changed1(juice_agent_t *agent, juice_state_t state, void *user_ptr) {
    const int allindex=(int)(long)user_ptr;
     LOGGERICE("on_state_changed1 allindex=%d\n",allindex);
-    if(!stillworking(allindex))
+    if(!isStillUsable(allindex)) {
         return;
+        }
     const passhost_t &host= getBackupHosts()[allindex];
     LOGGERICE("%s %d State: %s\n", host.getICEname().data(),host.side,juice_state_to_string(state));
-    ICEConnect *con=static_cast<ICEConnect*>(connections[allindex]);
+    auto con=getconnectionas<ICEConnect>(allindex);
     con->state=state;
     switch(state) {
         case	JUICE_STATE_GATHERING:
@@ -322,7 +340,7 @@ static void on_state_changed1(juice_agent_t *agent, juice_state_t state, void *u
                 static void thread( juice_agent_t *agent, int allindex) {
                    LOGGERICE("start CONNECT::thread allindex=%d\n",allindex);
                     passhost_t &host= getBackupHosts()[allindex];
-                    ICEConnect *con=static_cast<ICEConnect*>(connections[allindex]);
+                    auto con=getconnectionas<ICEConnect>(allindex);
                     if(!con) {
                         LOGGERICE("connection[%d]==NULL\n",allindex);
                         return;
@@ -332,7 +350,7 @@ static void on_state_changed1(juice_agent_t *agent, juice_state_t state, void *u
                         return;
                         }
 
-                   con->icedata[host.side].sendStart(agent,con);
+                   con->icedata[host.side].sendStart(agent,con.get());
                    con->startSending.wait(true);
                    LOGGERICE("allindex=%d After con->startSending.wait(true)\n",allindex);
                    {
@@ -353,7 +371,7 @@ static void on_state_changed1(juice_agent_t *agent, juice_state_t state, void *u
             struct Failure {
                 static void thread( juice_agent_t *agent, int allindex) {
                     const passhost_t &host= getBackupHosts()[allindex];
-                    ICEConnect *con=static_cast<ICEConnect*>(connections[allindex]);
+                    auto con=getconnectionas<ICEConnect>(allindex);
                     if(!con) {
                         LOGGERICE("connections[%d]==NULL\n",allindex);
                         return;
@@ -476,7 +494,7 @@ void ICEConnect::receiverThread(int argindex) {
     };
 
 void startReceiverThread(int allindex) {
-    if(ICEConnect *con=static_cast<ICEConnect *>(connections[allindex])) {
+    if(auto con=getconnectionas<ICEConnect>(allindex)) {
         LOGGER("startReceiverThread(%d)\n",allindex);
         std::thread th{&ICEConnect::receiverThread,con,allindex};
         th.detach();
@@ -622,7 +640,7 @@ void   recreateAgents() {
     for(int index=0;index<hostnr;++index) {
         const passhost_t &host= getBackupHosts()[index];
         if(host.ICE) {
-            if(ICEConnect *con=static_cast<ICEConnect *>(connections[index]))
+            if(auto con=getconnectionas<ICEConnect>(index))
                        con->recreateAgent=true;
             }
         }
@@ -663,7 +681,7 @@ static bool waitonDescription(juice_agent *agent,int allindex,std::string_view c
 //    return false;
     }
 static  bool putDescription(int allindex,juice_agent *agent,std::string_view commonLabel,bool side,std::string_view hostname)  {
-    ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+    auto con=getconnectionas<ICEConnect>(allindex);
     if(const int error=juice_get_local_description(agent, con->sdp, JUICE_MAX_SDP_STRING_LEN);JUICE_ERR_SUCCESS!=error) {
         LOGGERICE("%s %d: juice_get_local_description failed: %s (%d)\n",commonLabel.data(),side,juiceErrorString(error),error);
         return  false;
@@ -691,7 +709,7 @@ static  bool putDescription(int allindex,juice_agent *agent,std::string_view com
                     }
                 }
              else {
-                LOGGERICE("putdescription: %s %d: Http error\n",commonLabel.data(),side);
+                LOGGERICE("putdescription: %s %d: Http error code=%d\n",commonLabel.data(),side,code);
                 sleep(20);
                 }
 
@@ -705,11 +723,13 @@ static  bool putDescription(int allindex,juice_agent *agent,std::string_view com
 
 
 bool initAgent(juice_agent *agent,int allindex) {
-    if(allindex>=backup->getupdatedata()->hostnr)
+    if(allindex>=backup->getupdatedata()->hostnr)  {
+        LOGGER("initAgent allindex %d >= hostnr %d\n",allindex, backup->getupdatedata()->hostnr);
         return false;
+        }
     const passhost_t &host= getBackupHosts()[allindex];
     std::string_view commonLabel=host.getICEname();
-    ICEConnect *con=static_cast<ICEConnect *>(connections[allindex]);
+    auto con=getconnectionas<ICEConnect>(allindex);
     std::string_view hostname=hostnames[con->hostindex];
     LOGGER("initAgent %s allindex=%d side=%d\n",commonLabel.data(),allindex,host.side);
     int32_t firstfailed=getConnectTime(allindex);
@@ -727,25 +747,28 @@ bool initAgent(juice_agent *agent,int allindex) {
         con->phase=GetDescription;
         if(!waitonDescription(agent,allindex,commonLabel,side,hostname)) {
            LOGGERICE("initAgent %s %d: waitonDescription failed\n",commonLabel.data(),side);
-            return false;
-        }
-      if(!stillworking(allindex))
-        return false;
+           return false;
+           }
+      if(!isStillUsable(allindex)) {
+          return false;
+          }
       }
     con->phase=PutDescription;
     if(!putDescription(allindex,agent, commonLabel, side,hostname)) { 
         LOGGERICE("initAgent %s %d: putDescription failed\n",commonLabel.data(),side);
         return false;
          }
-    if(!stillworking(allindex))
+    if(!isStillUsable(allindex)) {
         return false;
+        }
 
     std::jthread receive{getAddressesThread,agent,commonLabel,side,hostname};
     LOGGERICE("initAgent %s %d: Before juice_gather_candidates\n",commonLabel.data(),side);
     con->phase=GatherCandidates;
     int ret=juice_gather_candidates(agent);
-    if(!stillworking(allindex))
+    if(!isStillUsable(allindex)) {
         return false;
+        }
     LOGGERICE("initAgent %s %d: After juice_gather_candidates(%p)=%d\n",commonLabel.data(),side,agent,ret);
     return ret==JUICE_ERR_SUCCESS;
   }
