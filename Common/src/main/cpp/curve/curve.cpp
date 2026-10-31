@@ -1,4 +1,4 @@
-﻿
+
 //#define DONTTALK WEAROS
 
 #ifdef WEAROS

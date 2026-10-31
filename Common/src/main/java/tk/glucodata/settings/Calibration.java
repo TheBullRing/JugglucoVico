@@ -1,4 +1,4 @@
-﻿
+
 package tk.glucodata.settings;
 
 import static android.view.View.GONE;

@@ -444,9 +444,7 @@ static bool mkhtml(recdata *outdata,std::string_view origin,std::string_view hea
     addar(endptr,contentlength);
     endptr+=sprintf(endptr,"%d",weblen);
     addar(endptr,seperator);
-    #ifndef NOLOG
     const char *startpage=endptr;
-    #endif
     addar(endptr,prehead);
     addstrview(endptr,header);
     if(dark) {

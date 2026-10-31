@@ -48,6 +48,46 @@
     <style name="AppTheme.Base.Dark" parent="AppTheme.Base">
         <item name="android:buttonStyle">@style/mybuttonstyle</item>
         <item name="isAppLightTheme">false</item>
+        <!-- Fondo y colores oscuros por defecto — sin esto el tema base AppCompat
+             deja fondo blanco/azul cuando getTheme()==0 (datos nativos borrados) -->
+        <item name="android:windowBackground">#FF1C1B1F</item>
+        <item name="android:colorBackground">#FF1C1B1F</item>
+        <item name="android:textColorPrimary">#FFFFFFFF</item>
+        <item name="android:textColor">#FFFFFFFF</item>
+        <item name="colorButtonBackground">#FF3D3D3D</item>
+        <item name="colorButtonText">#FFFFFFFF</item>
+    </style>
+
+    <!--
+        Tema para el path Vico/Compose. Hereda de Theme.Material3.DayNight.NoActionBar
+        para que todos los diálogos Java (Settings, NightPost, etc.) que se abren
+        encima del ComposeView usen automáticamente Material 3 / Material You.
+        No necesita datos nativos — el sistema aplica los colores del fondo de
+        pantalla del usuario en Android 12+ (dynamicColor).
+    -->
+    <style name="AppTheme.Vico" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Los botones Java usan mybuttonstyle que lee estos attrs.
+             colorButtonBackground = colorPrimary del tema M3 (azul/violeta M3)
+             colorButtonText = blanco para contraste garantizado -->
+        <item name="colorButtonBackground">?attr/colorPrimary</item>
+        <item name="colorButtonText">?attr/colorOnPrimary</item>
+        <!-- Aplicar mybuttonstyle a los Button Java para que usen button_rectangle -->
+        <item name="android:buttonStyle">@style/mybuttonstyle</item>
+        <item name="android:textColorPrimary">?attr/colorOnSurface</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <!-- Atributos custom que usan los checkboxes y labels -->
+        <item name="colorSpinnerDropdownText">?attr/colorPrimary</item>
+        <item name="colorDialogBackground">?android:attr/windowBackground</item>
+        <item name="colorDialogBorder">?attr/colorPrimary</item>
+        <item name="colorHelpBackground">?android:attr/windowBackground</item>
+        <item name="colorHelpBorder">?attr/colorSecondary</item>
+        <item name="colorMirrorConnection">@color/red</item>
+        <item name="isAppLightTheme">false</item>
+        <item name="themedButtonBackground">@drawable/button_rectangle</item>
+        <item name="buttonCornerRadius">16dp</item>
+        <item name="colorControlHighlight">?attr/colorPrimaryContainer</item>
+        <item name="alertDialogTheme">@style/MyDarkAlertDialogTheme</item>
+        <item name="android:alertDialogTheme">@style/MyDarkAlertDialogTheme</item>
     </style>
 
     <style name="MySpinnerDropDownItemStyle" parent="android:Widget.DropDownItem.Spinner">

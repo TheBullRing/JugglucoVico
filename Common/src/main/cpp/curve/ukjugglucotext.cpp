@@ -1,4 +1,4 @@
-﻿#include "jugglucotext.hpp"
+#include "jugglucotext.hpp"
 #ifdef INJUGGLUCO
 #ifndef WEAROS
 constexpr static std::string_view uklabels[]={"╨Æ╤â╨│╨╗.","╨ö╨╡╨║.","╨¿╨▓╨╕╨┤╨║.","╨ö╨╛╨▓╨│.","╨Æ╨╡╨╗╨╛╤ü","╨ƒ╤Ç╨╛╨│.","╨Ü╤Ç╨╛╨▓"};

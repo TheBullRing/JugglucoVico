@@ -82,12 +82,9 @@ private static final String LOG_ID="DynamicThemeUtils";
     }
 
     public static void applyTheme(View root) {
-        if(Natives.getTheme() == 0) {
-            return; 
-           } 
         int radius = Natives.getradius();
         boolean isOval = Natives.getisOval();
-        applyTheme(root,radius,isOval);
+        applyTheme(root, radius, isOval);
        }
     public static void applyTheme(View root,int radius,boolean isOval) {
         traverseAndStyle(root, radius, isOval);
@@ -110,14 +107,35 @@ private static final String LOG_ID="DynamicThemeUtils";
             }
         }
     }
+/**
+ * Returns the three colours needed to build the Compose ColorScheme from the
+ * Activity theme (which has the user's custom Juggluco theme applied).
+ * Returns int[]{bgColor, primaryColor, onPrimaryColor, onSurfaceColor}.
+ */
+public static int[] getThemeColors(Context ctx) {
+    String pkg = ctx.getPackageName();
+    int bgColorInt  = resolveAttributeColor(ctx, android.R.attr.windowBackground,
+                          android.graphics.Color.WHITE);
+    int btnBgAttrId = ctx.getResources().getIdentifier("colorButtonBackground", "attr", pkg);
+    int btnTxAttrId = ctx.getResources().getIdentifier("colorButtonText",       "attr", pkg);
+    int btnBgColor  = resolveAttributeColor(ctx, btnBgAttrId,
+                          resolveAttributeColor(ctx, android.R.attr.colorAccent,
+                              android.graphics.Color.BLUE));
+    int btnTxColor  = resolveAttributeColor(ctx, btnTxAttrId, android.graphics.Color.WHITE);
+    int onSurface   = resolveAttributeColor(ctx, android.R.attr.textColorPrimary,
+                          android.graphics.Color.BLACK);
+    return new int[]{bgColorInt, btnBgColor, btnTxColor, onSurface};
+}
 static void setTheme(Activity act) {
        int theme=Natives.getTheme();
        Log.i(LOG_ID,"getTheme()="+theme);
-       if(theme!=0) {
-                act.setTheme( AppTheme.values()[theme].getStyleResId());
-                if(Natives.getisOval()) {
-                    act.getTheme().applyStyle(R.style.ShapeOverride_Oval, true);
-                    }
-             }
+       // Aplicar siempre el tema, incluyendo el índice 0 (AndroidDefault).
+       // Sin esto, cuando getTheme()==0 la Activity queda con el tema base
+       // AppCompat (azul genérico) en lugar del tema oscuro por defecto de Juggluco.
+       int idx = (theme >= 0 && theme < AppTheme.values().length) ? theme : 0;
+       act.setTheme(AppTheme.values()[idx].getStyleResId());
+       if(Natives.getisOval()) {
+           act.getTheme().applyStyle(R.style.ShapeOverride_Oval, true);
+           }
        }
 }
