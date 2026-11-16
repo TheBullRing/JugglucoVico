@@ -151,7 +151,18 @@ suspend fun findWearDevicesWithApp() {
         return;
     try {
         val capabilityInfo = capabilityClient.getCapability( JUGGLUCOIDENT, CapabilityClient.FILTER_REACHABLE).await()
-        setnodes(capabilityInfo.nodes)
+        var foundNodes = capabilityInfo.nodes
+        if (foundNodes.isEmpty()) {
+            try {
+                val connected = nodeClient.connectedNodes.await()
+                if (connected.isNotEmpty()) {
+                    foundNodes = connected.toSet()
+                }
+            } catch (th: Throwable) {
+                Log.e(LOG_ID, "nodeClient.connectedNodes fallback failed: ${th.message}")
+            }
+        }
+        setnodes(foundNodes)
         Log.d(LOG_ID, "Capable Nodes: $nodes")
     } catch (cancellationException: CancellationException) {
         throw cancellationException

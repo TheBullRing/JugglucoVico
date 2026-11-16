@@ -38,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +92,14 @@ fun VicoWatchDialog(
     var webServer by remember { mutableStateOf(Natives.getusexdripwebserver()) }
     val useGarminIn = remember { Natives.getusegarmin() }
     var kerfstok  by remember { mutableStateOf(useGarminIn) }
+
+    // Igual que Watch.show(): al abrir con WearOS activo, refrescar los relojes
+    // alcanzables y sincronizar, para que "Config." encuentre los relojes conectados.
+    LaunchedEffect(Unit) {
+        if (Applic.useWearos()) {
+            tk.glucodata.WearosVicoBridge.refreshDevices()
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -153,6 +162,7 @@ fun VicoWatchDialog(
                     Switch(
                         checked         = wearOS,
                         onCheckedChange = { v ->
+                            val previousState = wearOS
                             wearOS = v
                             // Equivalente a Watch.setuseWearos(): activa/desactiva MessageReceiver
                             try {
@@ -164,12 +174,12 @@ fun VicoWatchDialog(
                             } catch (_: Throwable) { }
 
                             if (v) {
-                                if (!Applic.useWearos()) {
-                                    tk.glucodata.MessageSender.initwearos(Applic.app)
+                                if (!previousState || tk.glucodata.MessageSender.getMessageSender() == null) {
+                                    tk.glucodata.WearosVicoBridge.refreshDevices()
                                 } else {
                                     tk.glucodata.MessageSender.getMessageSender()?.finddevices()
+                                    Natives.switchSync()
                                 }
-                                Natives.switchSync()
                             }
                         },
                     )

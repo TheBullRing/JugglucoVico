@@ -66,7 +66,7 @@ fun VicoAboutDialog(onDismiss: () -> Unit) {
     val versionCode = remember { BuildConfig.VERSION_CODE.toString() }
     val versionName = remember { BuildConfig.VERSION_NAME }
     val cpuArch     = remember { Natives.getCPUarch() ?: "" }
-    val buildTime   = remember { BuildConfig.BUILD_TIME }
+    val buildTime   = remember { tk.glucodata.BuildTime.TIME }
 
     Dialog(
         onDismissRequest = onDismiss,

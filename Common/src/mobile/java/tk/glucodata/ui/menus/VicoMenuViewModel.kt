@@ -45,6 +45,9 @@ sealed class VicoMenuState {
     /** M6/Watch — Conectividad de relojes y gadgets (Watch.show()). */
     object Watch : VicoMenuState()
 
+    /** Relojes → WearOS → Config. (Wearos.show()). */
+    object Wearos : VicoMenuState()
+
     /** M3 — Calibración (entrada de glucosa capilar). */
     object Calibration : VicoMenuState()
 

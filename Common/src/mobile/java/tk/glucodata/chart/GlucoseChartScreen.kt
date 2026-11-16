@@ -30,6 +30,7 @@ package tk.glucodata.chart
 
 import tk.glucodata.ui.menus.VicoMenuHost
 import tk.glucodata.ui.menus.VicoMenuViewModel
+import tk.glucodata.ui.menus.VicoScanResultPopup
 import android.app.DatePickerDialog
 import android.content.res.Configuration
 import android.os.Build
@@ -204,6 +205,7 @@ fun GlucoseChartScreen(
         // VicoMenuHost despacha directamente sin delegar a overlays Java.
         GlucoseTheme(invertColors = settings.invertColors) {
             VicoMenuHost(viewModel = menuViewModel)
+            VicoScanResultPopup()
         }
     }
 }

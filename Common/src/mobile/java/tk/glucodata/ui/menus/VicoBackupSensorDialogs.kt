@@ -228,6 +228,9 @@ private fun VicoBackupHostEditDialog(
                     nums, stream, scans, false,
                     receive, false, false, pass,
                     0L, label, false, false, "", false,
+                    // Keep the mirror's transport/BLE role when editing; automatic for new hosts.
+                    if (isNew) 0 else Natives.getbackuptransport(hostIndex),
+                    if (isNew) false else Natives.getbackupbleclient(hostIndex),
                 )
                 onDismiss()
             }) { Text(if (isNew) "Crear" else "Guardar") }

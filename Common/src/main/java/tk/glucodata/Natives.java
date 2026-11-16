@@ -911,6 +911,7 @@ public static native int[] searchIngredient(String label);
 public static native boolean dexKnownSensor(long dataptr);
 
 public static native long[] activeSensorPtrs( );
+public static native long[] allSensorPtrs( );
 public static native String namefromSensorptr(long sensorptr);
 public static native String sensortextfromSensorptr(long sensorptr);
 public static native void finishfromSensorptr(long sensorptr);

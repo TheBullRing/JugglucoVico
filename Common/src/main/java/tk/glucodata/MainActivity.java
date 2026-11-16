@@ -2541,7 +2541,6 @@ public static void addMyContentView(Activity context, View view, ViewGroup.Layou
 public void addMyContentView(View view, ViewGroup.LayoutParams params) {
     addMyContentView(this, view, params);
     }
-}
 
 /**
  * En el path Vico, cuando se añade un overlay WRAP_CONTENT (NumberView,
@@ -2625,7 +2624,7 @@ private static void applyInsetsToOverlay(View view) {
 }
 
 /**
- * Show the NFC scan result as a centred View overlay for 8 seconds.
+ * Show the NFC scan result as a Compose popup (see VicoScanResultPopup) for 8 seconds.
  * Called from GlucoseCurve.summaryready() in the Vico path only,
  * because the GL canvas never draws in headless mode.
  */
@@ -2633,45 +2632,18 @@ public static void showVicoScanResult(MainActivity act) {
     if (act == null) return;
     final strGlucose sg = Natives.lastglucose();
     if (sg == null || sg.value == null || sg.value.isEmpty()) return;
+    showVicoScanResult(act, sg.value, sg.sensorid);
+}
 
-    // Build label: "<value>\n<sensorid>" — mirrors the C++ showoldscan() layout.
-    final String sensorLine = (sg.sensorid != null && !sg.sensorid.isEmpty())
-            ? "\n" + sg.sensorid : "";
-    final String text = sg.value + sensorLine;
-
-    // Style the overlay to match the app's inverted-color setting.
-    final boolean dark = Natives.getInvertColors();
-    final int bgColor  = dark ? 0xE6000000 : 0xE6FFFFFF;   // 90% black / white
-    final int txtColor = dark ? 0xFFFFFFFF : 0xFF000000;
-
-    TextView tv = new TextView(act);
-    tv.setText(text);
-    tv.setTextColor(txtColor);
-    tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, Applic.largefontsize > 0
-            ? Applic.largefontsize * 1.4f
-            : GlucoseCurve.metrics.density * 32f);
-    tv.setGravity(Gravity.CENTER);
-    tv.setBackgroundColor(bgColor);
-    final int pad = (int)(GlucoseCurve.metrics.density * 24);
-    tv.setPadding(pad, pad, pad, pad);
-
-    final FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER);
-    act.addMyContentView(tv, params);
-
-    // Auto-dismiss after 8 seconds.
-    final Runnable dismiss = () -> {
-        try { tk.glucodata.settings.Settings.removeContentView(tv); } catch (Throwable ignored) {}
-    };
-    Applic.app.getHandler().postDelayed(dismiss, 8000L);
-
-    // Also dismiss immediately on tap.
-    tv.setOnClickListener(v -> {
-        Applic.app.getHandler().removeCallbacks(dismiss);
-        dismiss.run();
-    });
+/**
+ * Popup with an explicit NFC scan value. Called from ScanNfcV.scan() (Vico path only)
+ * with the value already formatted for the display unit. Rendered by the Compose
+ * VicoScanResultPopup (themed, large glucose value, small sensor serial).
+ */
+public static void showVicoScanResult(MainActivity act, String value, String sensorid) {
+    if (act == null || value == null || value.isEmpty()) return;
+    tk.glucodata.ui.menus.VicoScanResultState.show(
+            value, Applic.unit == 1 ? "mmol/L" : "mg/dL", sensorid);
 }
 
 public boolean canForceMenuLandscape(Configuration config) {

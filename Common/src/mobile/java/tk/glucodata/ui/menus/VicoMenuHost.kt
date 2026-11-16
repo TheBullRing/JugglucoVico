@@ -73,9 +73,13 @@ fun VicoMenuHost(
         is VicoMenuState.Watch ->
             VicoWatchDialog(
                 onDismiss         = { viewModel.dismiss() },
-                onConfigureWearOS = { viewModel.dismiss() },
+                onConfigureWearOS = { viewModel.show(VicoMenuState.Wearos) },
                 onConfigureServer = { viewModel.show(VicoMenuState.NightscoutFollower) },
             )
+
+        // ── Watch → WearOS → Config. (COMPOSE NATIVO) ─────────────────────
+        is VicoMenuState.Wearos ->
+            VicoWearosDialog(onDismiss = { viewModel.show(VicoMenuState.Watch) })
 
         // ── M7/NumberEntry — Entrada manual de glucosa (COMPOSE NATIVO) ───
         is VicoMenuState.NumberEntry ->

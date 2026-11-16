@@ -453,13 +453,6 @@ public static boolean isLandscape(Context context) {
     return getwidth(context)>getheight(context);
     }
 
-void configurationChanged(MainActivity activity) {
-    numberview.configurationChanged(activity);
-    // Reposition floating overlays after a configuration change (e.g. rotation).
-    if (search != null) search.post(search::requestLayout);
-    if (searchcontrol != null) searchcontrol.post(searchcontrol::requestLayout);
-    }
-
 static void setgeo(int w,int h) {
     width=w;
     height=h;
@@ -532,7 +525,6 @@ private float graphX(float physicalX,float physicalY) {
         case 3: return physicalY;
         default:return physicalX;
         }
->>>>>>> origin/primary
     }
 private float graphY(float physicalX,float physicalY) {
     switch(graphRotationMode()) {

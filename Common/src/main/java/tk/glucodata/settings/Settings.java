@@ -897,7 +897,7 @@ new View[]{isvalue},new View[]{ringisvalue},new View[]{usealarm},new View[]{adva
             new View[]{lowalarm[0]},new View[]{lowalarm[1],lowalarm[2]},
             new View[]{highalarm[0]},new View[]{highalarm[1],highalarm[2]},
             new View[]{lossalarm},new View[]{losswait,min,ringlossalarm},
-            new View[]{isvalue,ringisvalue},new View[]{alarmis,alarmtype},
+            new View[]{isvalue,ringisvalue},new View[]{usealarm},
             new View[]{advanced,spin},new View[]{help,Save}};
         }    
     View lay;

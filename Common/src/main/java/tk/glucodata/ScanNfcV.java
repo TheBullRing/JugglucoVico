@@ -276,6 +276,14 @@ static public synchronized void scan(GlucoseCurve curve,Tag tag) {
                         int uit = Natives.nfcdata(uid, info, data);
                         value = uit & 0xFFFF;
                         Log.format("glucose=%.1f\n",(float)value/mgdLmult);
+                        if(value!=0 && Applic.useVicoChart()) {
+                            // The GL canvas never draws in the Vico path, so show the scan value as an overlay.
+                            final String shown = Applic.unit==1
+                                ? String.format(java.util.Locale.getDefault(), "%.1f", value/mgdLmult)
+                                : Integer.toString(value);
+                            final String shownId = sensorident;
+                            Applic.RunOnUiThread(() -> MainActivity.showVicoScanResult(main, shown, shownId));
+                            }
                         ret = uit >> 16;
                         final int restoredStreamState = 0x40; // SAS_STREAM_STATE_RESTORED
                         final boolean reconnect = (ret & restoredStreamState) != 0;

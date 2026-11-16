@@ -1477,7 +1477,7 @@ extern "C" JNIEXPORT jboolean  JNICALL   fromjava(hasAidexX)(JNIEnv *env, jclass
 extern "C" JNIEXPORT jlongArray JNICALL   fromjava(activeSensorPtrs)(JNIEnv *env, jclass cl) {
     setusedsensors();
     const int len= usedsensors.size();
-     jlong longar[len]; 
+    jlong longar[len];
     LOGGER("activeSensorPtrs  len=%d\n",len);
     for(int i=0;i<len;i++) {
          int index=usedsensors[i];
@@ -1487,7 +1487,30 @@ extern "C" JNIEXPORT jlongArray JNICALL   fromjava(activeSensorPtrs)(JNIEnv *env
     jlongArray    ptrAr = env->NewLongArray(len);
     env->SetLongArrayRegion(ptrAr, 0, len, longar);
     return ptrAr;
-    } 
+    }
+
+extern "C" JNIEXPORT jlongArray JNICALL   fromjava(allSensorPtrs)(JNIEnv *env, jclass cl) {
+    if (!sensors) {
+        return env->NewLongArray(0);
+    }
+    std::vector<int> indices = sensors->sensorsInPeriod(0, 0xFFFFFFFF);
+    const int len = indices.size();
+    std::vector<jlong> ptrs;
+    ptrs.reserve(len);
+    for (int i = 0; i < len; i++) {
+        int index = indices[i];
+        const SensorGlucoseData *sens = sensors->getSensorData(index);
+        if (sens) {
+            ptrs.push_back(reinterpret_cast<jlong>(sens));
+        }
+    }
+    const int ptr_len = ptrs.size();
+    jlongArray ptrAr = env->NewLongArray(ptr_len);
+    if (ptr_len > 0) {
+        env->SetLongArrayRegion(ptrAr, 0, ptr_len, ptrs.data());
+    }
+    return ptrAr;
+}
 
 extern "C" JNIEXPORT jstring JNICALL   fromjava(namefromSensorptr)(JNIEnv *env, jclass cl,jlong sensorptr) {
     const auto *sens=reinterpret_cast<const SensorGlucoseData*>(sensorptr); 

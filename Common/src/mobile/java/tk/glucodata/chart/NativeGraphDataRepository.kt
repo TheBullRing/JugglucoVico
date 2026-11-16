@@ -161,13 +161,13 @@ class NativeGraphDataRepository private constructor() : GraphDataRepository {
      * export cursor, which starts at 0 when HC is disabled, reading nothing.
      */
     private fun snapshotGlucoseEntries(): List<GlucoseEntry> {
-        val sensorPtrs: LongArray = Natives.activeSensorPtrs() ?: return emptyList()
+        val sensorPtrs: LongArray = Natives.allSensorPtrs() ?: return emptyList()
         if (sensorPtrs.isEmpty()) return emptyList()
 
         val result = mutableListOf<GlucoseEntry>()
 
         sensorPtrs.forEachIndexed { sensorIndex, sensorPtr ->
-            if (sensorPtr == 0L) return@forEachIndexed
+            if (sensorPtr == 0L || Natives.getHidefromSensorptr(sensorPtr)) return@forEachIndexed
 
             // Keyed by timestampMs so duplicates between history and polls are merged
             val merged = mutableMapOf<Long, GlucoseEntry>()

@@ -224,7 +224,7 @@ fun VicoSettingsScreen(
                     checked = floatGlucose,
                     onCheckedChange = {
                         floatGlucose = it
-                        activity?.let { act ->
+                        (activity as? tk.glucodata.MainActivity)?.let { act ->
                             tk.glucodata.Floating.setfloatglucose(act, it)
                         }
                     },
