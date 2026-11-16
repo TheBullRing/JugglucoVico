@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <string>
 #include <jni.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -267,7 +268,15 @@ static     const int waitsig=60;
         logs.firstdata(ab.getsensordir(),datptr);
         }
 #endif
-    auto [alg,scanda]=ab.ProcessOne(datptr); 
+    auto [alg,scanda,restored]=ab.ProcessOne(datptr);
+#ifdef LIBRE2_EU_INDEPENDENT
+    if(ab.hist&&!libre2_imp::bluetooth_supported(datptr->info))ab.hist->setbluetoothOn(2);
+    const bool stream_window=!ab.hist||tim<time_t(ab.hist->expectedEndTime())+60;
+    const int reconnect=restored&&stream_window&&!setbluetoothon?SAS_STREAM_STATE_RESTORED<<16:0;
+#else
+    constexpr bool stream_window=true;
+    constexpr int reconnect=0;
+#endif
 //Abbott::scanresult_t 
 //    const AlgorithmResults *alg; const ScanData *scanda;
     LOGSTRING("after ab.ProcessOne\n");
@@ -280,7 +289,7 @@ static     const int waitsig=60;
     if(alg==Initialized) {
         LOGSTRING("Initialized\n");
         const int min=datptr->getSensorAgeInMinutes();
-        const bool enablestreaming=setbluetoothon||(ab.hist&&!ab.hist->streamingIsEnabled());
+        const bool enablestreaming=stream_window&&(setbluetoothon||(ab.hist&&!ab.hist->streamingIsEnabled()));
         if(min<60)
             ret=5<<16|(60-min)<<24;
         else
@@ -290,7 +299,9 @@ static     const int waitsig=60;
 
         sensor* senso=sensors->getsensor(ab.sensorindex);
         senso->initialized=true;
+#ifndef LIBRE2_EU_INDEPENDENT
         senso->halfdays=29;
+#endif
         }
     else {
     if(alg){
@@ -300,8 +311,19 @@ static     const int waitsig=60;
             LOGSTRING("scanda\n");
             logscanresult(alg);
             int gluval=alg->currentglucose().getValue();
-            if(gluval) {
+            if(gluval)
                 scantoshow={ab.sensorindex,scanda,static_cast<uint32_t>(tim),settings->data()->DoCalibrate};
+            sensor* senso=sensors->getsensor(ab.sensorindex);
+            if(!stream_window) {
+                if(!senso->finished) {
+                    senso->finished=1;
+                    setstreaming(ab.hist);
+                    setusedsensors();
+                    backup->resensordata(ab.sensorindex);
+                    }
+                return (4<<16)|gluval;
+                }
+            if(gluval) {
                 wakeaftermin(0);
                 if(setbluetoothon||!ab.hist->streamingIsEnabled())  {
                     return 8<<16|gluval;
@@ -316,20 +338,18 @@ static     const int waitsig=60;
                             }
                         } */
                     }
-                sensor* senso=sensors->getsensor(ab.sensorindex);
                 if(senso->finished) {
                     LOGAR("was finished");
                     setstreaming(ab.hist); //NEEDED/
                     setusedsensors(); //NEEDED
                     senso->finished=0;
                     backup->resensordata(ab.sensorindex);
-                    return 8<<16|gluval;
+                    return (reconnect?reconnect:8<<16)|gluval;
                     }
-                return gluval;
+                return reconnect|gluval;
                 }
             const int min=datptr->getSensorAgeInMinutes();
             if(min<60) {
-                sensor* senso=sensors->getsensor(ab.sensorindex);
                 if(senso->finished) {
                     LOGSTRING("was finished\n");
                     setbluetoothon=true;
@@ -341,24 +361,26 @@ static     const int waitsig=60;
                 ret=5<<16|(60-min)<<24;
                 if(enablestreaming)
                     ret|=(0x80<<16);
-                return ret;
+                return reconnect|ret;
                 }
             else {
-                sensor* senso=sensors->getsensor(ab.sensorindex);
                 jlong ret;
                 if(alg->removed) {     
-                    LOGGER("%s was %d,set senso->finished=1;\n",senso->shortsensorname()->data(),senso->finished);
-                    if(alg->getlsaDetected()) {
+                    auto lsa=alg->getlsaDetected();
+                    LOGGER("nfcdata %s: removed=true lsaDetected=%d  finished=%d\n",senso->shortsensorname()->data(),lsa,senso->finished);
+                    if(lsa) {
                         ret=SAS_SENSOR_TERMINATED<<16;
                         }
                     else  {
                         ab.removestate();
+                        /*
                         if(!senso->finished) {
                             senso->finished=1;
                             setstreaming(ab.hist); 
                             setusedsensors();
                             backup->resensordata(ab.sensorindex);
                             }
+                            */
                         return SAS_SENSOR_REMOVED<<16;
                         }
                 
@@ -373,7 +395,7 @@ static     const int waitsig=60;
                     senso->finished=0;
                     backup->resensordata(ab.sensorindex);
                     }
-                return ret;
+                return alg->removed?ret:reconnect|ret;
                 }
             
             }
@@ -381,7 +403,11 @@ static     const int waitsig=60;
         }
     else {
         LOGAR("alg==null");
+#ifdef LIBRE2_EU_INDEPENDENT
+        if(libre2_imp::needs_activation(datptr->data))
+#else
         if(datptr->getSensorAgeInMinutes()==0)
+#endif
             ret=3<<16;
         }
         }
@@ -716,6 +742,10 @@ extern "C" JNIEXPORT jlong JNICALL   fromjava(getdataptr)(JNIEnv *env, jclass cl
         }
     }
     if(data->good()) {
+#ifdef LIBRE2_EU_INDEPENDENT
+        if(data->libreversion==2)
+            sensors->getsensor(sensorindex)->halfdays=sens->getweardurationMIN()/(30*24)+1;
+#endif
         LOGGER("getdataptr()=%p sens=%p\n",data,sens);
         return reinterpret_cast<jlong>(data);
         }
@@ -993,29 +1023,164 @@ constexpr const jlong isPreLow=19LL<<48;
 
 #include "gluconfig.hpp"
 extern void setbuffer(char *);
+/*
+static bool saveLibre2State(libre2stream *sdata, scanstate *state, uint32_t stamp) {
+    if (state->map.size() < 4 * 4096 || !stamp) return false;
+    const std::string_view sensordir = sdata->hist->getsensordir();
+    const auto name = scanstate::makefilename(sensordir, stamp);
+    const std::unique_ptr<const char[]> filename(name.data());
+    const auto size = state->map.size() * sizeof(state->map[0]);
+    std::lock_guard lock(sdata->hist->mutex);
+#ifdef LIBRE2_EU_INDEPENDENT
+    // The existing state link may already point to this timestamp.
+    std::string temporary = std::string(name) + ".XXXXXX";
+    const int fd = mkstemp(temporary.data());
+    if (fd < 0) return false;
+    const bool written = write(fd, state->map.data(), size) == static_cast<ssize_t>(size);
+    const bool closed = close(fd) == 0;
+    if (!written || !closed || rename(temporary.c_str(), filename.get()) != 0) {
+        unlink(temporary.c_str());
+        return false;
+    }
+#else
+    if (!writeall(filename.get(), state->map.data(), size)) return false;
+#endif
+    const std::unique_ptr<const char[]> old(getpreviousstate(sensordir).data());
+    if (!scanstate::makelink(name)) return false;
+    if (old && name != old.get()) unlink(old.get());
+    return true;
+}
 
 static void savestate(libre2stream *sdata) {
-    if(sdata->state->map.size()<4*4096)
-        return;
-    string_view sensordir=sdata->hist->getsensordir();
-    const auto *lastpo=sdata->hist->lastpoll();
-    auto name=scanstate::makefilename(sensordir, lastpo->gettime());
-    auto *state= sdata->state->map.data();
-    writeall(name.data(),state,sdata->state->map.size()*sizeof(state[0]));
-
-    const char *old;
-    {
-        std::lock_guard<std::mutex> lock(sdata->hist->mutex);
-
-        old=getpreviousstate(sensordir).data();
-        scanstate::makelink(name);
+    if (const auto *last = sdata->hist->lastpoll()) {
+        saveLibre2State(sdata, sdata->state, last->gettime());
     }
-    delete[] name.data();
-    unlink(old);
-    delete[] old;
+}
+
+#ifdef LIBRE2_EU_INDEPENDENT
+#include <charconv>
+#include "libre2_imp/processing/nfc_processing.hpp"
+
+extern bool addStreamHistory(const jniHistory &, time_t, int, SensorGlucoseData &);
+
+namespace {
+namespace ar = libre2_processing;
+libre2stream *garminLibre2Stream(jlong ptr) {
+    auto *stream = reinterpret_cast<streamdata *>(ptr);
+    if (!stream || stream->libreversion != 2 || !stream->hist ||
+            stream->hist == Sensoren::isdeleted) return nullptr;
+    auto *libre = static_cast<libre2stream *>(stream);
+    return libre->good() ? libre : nullptr;
+}
+
+bool copyLibre2Address(const char *address, std::span<std::uint8_t, 6> out) {
+    if (!address || std::strlen(address) != 17) return false;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        unsigned byte;
+        const char *start = address + i * 3;
+        const auto [end, ec] = std::from_chars(start, start + 2, byte, 16);
+        if (ec != std::errc{} || end != start + 2 || (i < 5 && *end != ':')) return false;
+        out[i] = byte;
+    }
+    return true;
+}
+}
+#endif
+extern "C" JNIEXPORT jboolean JNICALL fromjava(hasIndependentLibre2)(JNIEnv *, jclass) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    return JNI_TRUE;
+#else
+    return JNI_FALSE;
+#endif
+}
+
+static jbyteArray garminLibre2SetupFailed([[maybe_unused]] const char *reason) {
+    LOGGER("Libre 2 Kerfstok setup unavailable: %s\n", reason);
+    return nullptr;
+}
+extern "C" JNIEXPORT jbyteArray JNICALL fromjava(garminLibre2Setup)(
+        JNIEnv *env, jclass, jlong ptr, jint unit) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    auto *libre = garminLibre2Stream(ptr);
+    if (!libre) return garminLibre2SetupFailed("missing sensor state");
+    if (libre->state->datpos(FAKE)) return garminLibre2SetupFailed("state needs a fresh sensor reading");
+    auto *hist = libre->hist;
+    const auto *last = hist->lastpoll();
+    const auto *mess = libre->state->get(MESS);
+    const auto generation = hist->getsensorgen();
+    if (!last || !mess || mess->size() != ar::state_size ||
+            (generation != 1 && generation != 2) || hist->streamingIsEnabled() != 1) {
+        return garminLibre2SetupFailed("sensor has no usable Bluetooth state");
+    }
+    const std::span<const std::uint8_t, ar::state_size> state{
+        reinterpret_cast<const std::uint8_t *>(mess->data()), ar::state_size};
+    if (!ar::valid_state(state)) return garminLibre2SetupFailed("calibration checksum or state format");
+    const auto config = ar::configuration_from_state(state);
+    const auto now = time(nullptr);
+    const auto start = basesecs + ar::read_state_u32(config.data());
+    const auto wear = ar::processing_wear_minutes(ar::read_state_u16(config.data() + 0x14));
+    if (now < start || now - start >= wear * 60 || !std::isfinite(ar::read_state_float(config.data() + 0x18c)) ||
+            ar::read_state_float(config.data() + 0x18c) == 0.f) {
+        return garminLibre2SetupFailed("invalid sensor timing or factory calibration");
     }
 
+    // Version, generation, root slot, unit, MAC, UID, patch word, enable
+    // timestamp, next classic counter, Gen2 BLE provisioning, calibration.
+    std::array<std::uint8_t, 38 + ar::configuration_size> record{};
+    record[0] = 1;
+    record[1] = generation;
+    record[3] = unit == 1 ? 1 : 0;
+    if (!copyLibre2Address(hist->deviceaddress(), std::span(record).subspan<4, 6>())) {
+        return garminLibre2SetupFailed("missing Bluetooth address");
+    }
+    std::memcpy(record.data() + 10, libre->getident()->data(), 8);
+    if (generation == 1) {
+        const auto [enabled, patch] = hist->getbluedata();
+        const auto counter = hist->getinfo()->lockcount;
+        if (!patch || patch->size() != 6 || enabled < basesecs || counter >= 65535) {
+            return garminLibre2SetupFailed("invalid classic login state");
+        }
+        std::memcpy(record.data() + 18, patch->data() + 4, 2);
+        ar::write_processing_u32(record.data() + 20, enabled - basesecs);
+        ar::write_processing_u32(record.data() + 24, counter);
+    } else {
+        const auto auth = hist->getinfo()->getauth();
+        const unsigned slot = auth.size() == 12 ? ar::read_state_u16(auth.data() + 10) : 1;
+        if (slot < 1 || slot > 2 || std::ranges::all_of(auth.first(10), [](auto b) { return b == 0; })) {
+            return garminLibre2SetupFailed("invalid Gen2 login state");
+        }
+        record[2] = slot;
+        record[18] = ar::classic_payload_cipher(static_cast<uint8_t>(libre->getinfo()->data()[2]));
+        std::copy_n(auth.begin(), 10, record.begin() + 28);
+    }
+    std::copy(config.begin(), config.end(), record.begin() + 38);
+    if (!saveLibre2State(libre, libre->state, last->gettime())) return garminLibre2SetupFailed("could not save calibration");
+    auto result = env->NewByteArray(record.size());
+    if (result) {
+        env->SetByteArrayRegion(result, 0, record.size(), reinterpret_cast<const jbyte *>(record.data()));
+        LOGGER("Libre 2 Kerfstok setup ready: generation=%d bytes=%zu\n", generation, record.size());
+    }
+    return result;
+#else
+    return garminLibre2SetupFailed("native Libre 2 backend disabled");
+#endif
+}
 
+extern "C" JNIEXPORT jboolean JNICALL fromjava(garminLibre2Counter)(
+        JNIEnv *env, jclass cls, jstring serial, jint nextCounter) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    if (!serial || env->GetStringUTFLength(serial) != 11 || nextCounter < 0 || nextCounter > 65535) return JNI_FALSE;
+    if (nextCounter == 0) return JNI_TRUE;
+    auto *hist = reinterpret_cast<SensorGlucoseData *>(fromjava(str2sensorptr)(env, cls, serial));
+    if (!hist || hist == Sensoren::isdeleted || !hist->isLibre() || hist->isLibre3() ||
+            hist->getsensorgen() != 1) return JNI_FALSE;
+    hist->setlock(std::max(hist->getinfo()->lockcount, static_cast<uint32_t>(nextCounter)));
+    return JNI_TRUE;
+#else
+    return JNI_FALSE;
+#endif
+}
+*/
 static jlong getalarmonly(const uint32_t mgL,float drate,const SensorGlucoseData *hist) {
     const int glucoselowestmgL=hist->getminmgdL()*10;
     auto res=mgL<glucoselowestmgL?isLowest:(mgL>(hist->getmaxmgdL()*10)?isHighest:
@@ -1186,13 +1351,15 @@ extern "C" JNIEXPORT jlong JNICALL   fromjava(processTooth)(JNIEnv *envin, jclas
         }
     if(algres) {
         destruct _algdes([algres]{delete algres;});
+         sdata->setstate(newstate);
+         /*
         constexpr unsigned waittime=60*60;
         static time_t savetime=nu+waittime;
-         sdata->setstate(newstate);
         if(nu>savetime) {
             savestate(sdata);
             savetime=nu+waittime;
             }
+            */
         decltype(auto) gluc=algres->currentglucose();
         const uint32_t glval= gluc.getValue();
         const float drate=gluc.rate();
@@ -1218,6 +1385,44 @@ extern "C" JNIEXPORT jlong JNICALL   fromjava(processTooth)(JNIEnv *envin, jclas
     return 0LL;
     }
 
+/*
+extern "C" JNIEXPORT jlong JNICALL fromjava(garminLibre2Frame)(
+        JNIEnv *env, jclass, jlong ptr, jbyteArray bytes, jint stamp) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    auto *libre = garminLibre2Stream(ptr);
+    if (!libre) return -1;
+    const auto now = time(nullptr);
+    if (!bytes || env->GetArrayLength(bytes) != 46 || stamp <= basesecs || stamp > now + 60) return 1;
+    auto *frame = fromjbyteArray(env, bytes);
+    const auto releaseFrame = destruct([frame] { data_t::deleteex(frame); });
+    const auto *data = reinterpret_cast<const uint8_t *>(frame->data());
+    const int minute = ar::read_state_u16(data + 42);
+    auto *hist = libre->hist;
+    if (const auto *last = hist->lastpoll(); last && minute <= last->getid()) return 1;
+    auto next = std::make_unique<scanstate>(defaultscanstate);
+    std::unique_ptr<AlgorithmResults> result(libre2_imp::stream(libre->getident(), libre->getinfo(),
+        frame, libre->state, next.get(), stamp - basesecs, libre->startsincebase, true));
+    if (!result) return 1;
+    if (!saveLibre2State(libre, next.get(), stamp)) return -1;
+    libre->setstate(next.release());
+    const auto &glucose = result->currentglucose();
+    const auto mg = glucose.getValue();
+    const auto rate = glucose.rate();
+    if (glucose.getQuality() || !mg || !hist->savepoll(stamp, minute, mg, glucose.trend(), rate)) return 1;
+    if (streamHistory()) {
+        addStreamHistory(result->history(), stamp, minute, *hist);
+    }
+    backup->wakebackup(wakestream);
+    wakewithcurrent();
+    // Older returned samples fill history without replaying phone alarms.
+    if (now - stamp >= 180) return 1;
+    hist->sensorerror = false;
+    return glucoseback(stamp, mg, rate, hist);
+#else
+    return -1;
+#endif
+}
+*/
 
     /*
 extern "C" JNIEXPORT void JNICALL   fromjava(backupstream)(JNIEnv *envin, jclass cl,jlong dataptr) {
@@ -1444,9 +1649,47 @@ extern "C"  jbyteArray JNICALL fromjava(V2)(JNIEnv *env, jobject obj, jint i1, j
     return  abbottcall(P2)(env,obj,i1,i2,ar1,ar2);
     }*/
 
+// Save the actual JNI byte-array values, rather than opaque JNI reference addresses.
+// V1/V2 are wrappers for Abbott's P1/P2. Only the real Java-facing JNIEnv
+// is used here; the fake JNI environment used by processScan/Stream is different.
+#ifndef NOLOG
+static std::string replayJNIBytes(JNIEnv *env,jbyteArray ar) {
+    if(!ar) return "null";
+    const jsize n=env->GetArrayLength(ar);
+    if(n<0) return "invalid_length";
+    std::string result;
+    result.reserve(size_t(n)*2);
+    constexpr char hex[]="0123456789ABCDEF";
+    jbyte buffer[256];
+    for(jsize off=0;off<n;) {
+        jsize count=std::min<jsize>(n-off,jsize(std::size(buffer)));
+        env->GetByteArrayRegion(ar,off,count,buffer);
+        for(jsize i=0;i<count;++i) {
+            unsigned char b=static_cast<unsigned char>(buffer[i]);
+            result.push_back(hex[b>>4]);
+            result.push_back(hex[b&15]);
+            }
+        off+=count;
+        }
+    return result;
+    }
+// logprint() has a 4096-byte formatting buffer. Split long records explicitly.
+static void replayJNILine(const std::string &line) {
+    constexpr size_t chunk=1800;
+    if(line.empty()) { LOGSTRING("REPLAY_JNI <empty>\n"); return; }
+    for(size_t offset=0;offset<line.size();offset+=chunk)
+        LOGGER("REPLAY_JNI[%zu/%zu] %.*s\n",offset,line.size(),
+               int(std::min(chunk,line.size()-offset)),line.data()+offset);
+    }
+#endif
+
 int  abbottreinit();
 bool resetwrong();
 bool setgen2() {
+#ifdef LIBRE2_EU_INDEPENDENT
+    return abbottinit()>=0&&P1&&P2;
+#else
+
     debugclone();
     if(!P1) {
         resetwrong();
@@ -1455,6 +1698,8 @@ bool setgen2() {
     else {
         return abbottinit() >=0;
     }
+
+#endif
 }
 #ifdef  SAVEPS
 /*
@@ -1491,8 +1736,18 @@ static void writearray(JNIEnv *env,jbyteArray  jar,FILE *fp) {
 int p1funcit=0;
 FILE *funcfp;
 extern "C"   JNIEXPORT jint JNICALL   fromjava(V1)(JNIEnv *env, jobject obj, jint i, jint i2,jbyteArray  bArr,jbyteArray  bArr2) {
-    setgen2();
+    if(!setgen2()||!P1)return -1;
+#ifndef NOLOG
+    const auto before1=replayJNIBytes(env,bArr),before2=replayJNIBytes(env,bArr2);
+#endif
     jint res=abbottcall(P1)(env,obj,i,i2,bArr,bArr2,getjtoken(env));
+#ifndef NOLOG
+    replayJNILine("P1("+std::to_string(i)+","+std::to_string(i2)+","+
+                  before1+","+before2+")="+std::to_string(res));
+    const auto after1=replayJNIBytes(env,bArr),after2=replayJNIBytes(env,bArr2);
+    if(after1!=before1) replayJNILine("P1 arg3.after="+after1);
+    if(after2!=before2) replayJNILine("P1 arg4.after="+after2);
+#endif
     fprintf(funcfp,"p1struct p1_%d={%d,%d", p1funcit++,i,i2);
     writearray(env,bArr,funcfp);
     writearray(env,bArr2,funcfp);
@@ -1502,8 +1757,18 @@ extern "C"   JNIEXPORT jint JNICALL   fromjava(V1)(JNIEnv *env, jobject obj, jin
     }
 int p2funcit=0;
 extern "C"  JNIEXPORT  jbyteArray JNICALL fromjava(V2) (JNIEnv *env, jobject obj, jint i1, jint i2, jbyteArray jar1, jbyteArray jar2) {
-    setgen2();
+    if(!setgen2()||!P2)return nullptr;
+#ifndef NOLOG
+    const auto before1=replayJNIBytes(env,jar1),before2=replayJNIBytes(env,jar2);
+#endif
     jbyteArray jres=abbottcall(P2)(env, obj,  i1,  i2, jar1,  jar2,getjtoken(env)) ;
+#ifndef NOLOG
+    replayJNILine("P2("+std::to_string(i1)+","+std::to_string(i2)+","+
+                  before1+","+before2+")="+replayJNIBytes(env,jres));
+    const auto after1=replayJNIBytes(env,jar1),after2=replayJNIBytes(env,jar2);
+    if(after1!=before1) replayJNILine("P2 arg3.after="+after1);
+    if(after2!=before2) replayJNILine("P2 arg4.after="+after2);
+#endif
     fprintf(funcfp,"p2struct p2_%d={%d,%d",p2funcit++,i1,i2);
     writearray(env,jar1,funcfp);
     writearray(env,jar2,funcfp);
@@ -1515,16 +1780,34 @@ extern "C"  JNIEXPORT  jbyteArray JNICALL fromjava(V2) (JNIEnv *env, jobject obj
 #else
 
 extern "C"  JNIEXPORT  jint JNICALL   fromjava(V1)(JNIEnv *env, jclass obj, jint i, jint i2,jbyteArray  bArr,jbyteArray  bArr2) {
-    setgen2();
+    if(!setgen2()||!P1)return -1;
+#ifndef NOLOG
+    const auto before1=replayJNIBytes(env,bArr),before2=replayJNIBytes(env,bArr2);
+#endif
     jint res=abbottcall(P1)(env,obj,i,i2,bArr,bArr2,getjtoken(env));
-     LOGGER("V1(%i,%i,%p,%p)=%i\n",i,i2,bArr,bArr2,res);
+#ifndef NOLOG
+    replayJNILine("P1("+std::to_string(i)+","+std::to_string(i2)+","+
+                  before1+","+before2+")="+std::to_string(res));
+    const auto after1=replayJNIBytes(env,bArr),after2=replayJNIBytes(env,bArr2);
+    if(after1!=before1) replayJNILine("P1 arg3.after="+after1);
+    if(after2!=before2) replayJNILine("P1 arg4.after="+after2);
+#endif
     return res;
     }
 int p2funcit=0;
 extern "C"  JNIEXPORT  jbyteArray JNICALL fromjava(V2) (JNIEnv *env, jclass obj, jint i1, jint i2, jbyteArray jar1, jbyteArray jar2) {
-    setgen2();
+    if(!setgen2()||!P2)return nullptr;
+#ifndef NOLOG
+    const auto before1=replayJNIBytes(env,jar1),before2=replayJNIBytes(env,jar2);
+#endif
     jbyteArray jres=abbottcall(P2)(env, obj,  i1,  i2, jar1,  jar2,getjtoken(env)) ;
-    LOGGER("V2(%d,%d,%p,%p)=%p\n",i1,i2,jar1,jar2,jres);
+#ifndef NOLOG
+    replayJNILine("P2("+std::to_string(i1)+","+std::to_string(i2)+","+
+                  before1+","+before2+")="+replayJNIBytes(env,jres));
+    const auto after1=replayJNIBytes(env,jar1),after2=replayJNIBytes(env,jar2);
+    if(after1!=before1) replayJNILine("P2 arg3.after="+after1);
+    if(after2!=before2) replayJNILine("P2 arg4.after="+after2);
+#endif
     return jres;
     }
 #endif

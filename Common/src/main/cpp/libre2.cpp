@@ -30,12 +30,19 @@
 #include <dlfcn.h>
 #include <link.h>
 #include <string_view>
+#include <string>
+#include <atomic>
+#include <algorithm>
+#include <cstdint>
 #include "SensorGlucoseData.hpp"
 #include "debugclone.hpp"
 #include "settings/settings.hpp"
 #include "libre2.hpp"
 #include "jnisubin.hpp"
 #include "hexstr.hpp"
+#ifdef LIBRE2_EU_INDEPENDENT
+#include "libre2_imp/backend.hpp"
+#endif
 #if !defined(__aarch64__)        //||!defined(NOLOG)
 #define GEN2ROOTSHECK 1
 #endif
@@ -145,6 +152,10 @@ oldprocessStream_t  oldprocessStream=nullptr;
 #define setfuncneed(nam)   {if(strcmp(#nam,methods[it].name)) {LOGGER("%s!=%s\n",#nam,methods[it].name);} {if(!nam) {*(void **) (&nam)= methods[it].fnPtr;};++it;};}
 #endif
 jint         subRegisterNatives(JNIEnv*, jclass name, const JNINativeMethod*methods, jint nr) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    return JNI_ERR;
+#else
+
     if(nr!=20&&nr!=22) {
         LOGGER("ERROR: RegisterNatives %d\n",nr);
         for(int i=0;i<nr;i++) {
@@ -202,7 +213,9 @@ jint         subRegisterNatives(JNIEnv*, jclass name, const JNINativeMethod*meth
     setfunc(P2);
         LOGGER("end myRegisterNatives %d\n",it);
         return 0;
-        }
+
+#endif
+}
 
 #if __ANDROID_API__ >= 24
 #define usedlsym(han,name) dlvsym(han,name,nullptr)
@@ -225,6 +238,10 @@ extern JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) ;
 //#include "calibrat2_runtime_patch_v3.hpp"
 static void *dynlibhandle=nullptr;
 bool linklib(const char *filename) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    return false;
+#else
+
 LOGGER("linklib %s %p\n",filename,dynlibhandle);
 debugclone();
 
@@ -300,6 +317,8 @@ else {
     LOGGER("Can't open: %s %s\n",filename,dlerror());
     return  false;
     }
+
+#endif
 }
 
 #endif
@@ -371,10 +390,10 @@ static jint getFamily(const data_t *info) {
     abbottinit();
     debugclone();
     jint fam=abbottcall(getProductFamily)(subenv,nullptr, parsertype, (jbyteArray) info,casttoken);
-    LOGGER("getProductFamily()=%d\n", fam);
+    LOGGER("getProductFamily(%d,%s)=%d\n",parsertype,hexstr(info).str(),fam);
     if(!fam) {
         fam=abbottcall(getProductFamily)(subenv,nullptr, parsertype, (jbyteArray) info,casttoken);
-        LOGGER("getProductFamily()=%d\n", fam);
+        LOGGER("getProductFamily(%d,%s)=%d [retry]\n",parsertype,hexstr(info).str(),fam);
         }
     return fam;
     }
@@ -395,8 +414,57 @@ Abbott::Abbott(JNIEnv *env,string_view basedir,jbyteArray juid, const data_t *in
           }
         }
     }
+// Log exact Abbott processing arguments. These jbyteArrays are *not* Java
+// arrays: in our JNI substitute they point to data_t. Dump in bounded chunks
+// so logprint's 4096-byte buffer never truncates any input/state.
+#ifndef NOLOG
+static std::atomic<unsigned long long> replayCallNumber{0};
+static std::string replayJavaHex(JNIEnv *env,jbyteArray value) {
+    if(!value) return "null";
+    auto *copy=fromjbyteArray(env,value);
+    if(!copy) return "null";
+    std::string hex=hexstr(copy).str();
+    data_t::deleteex(copy);
+    return hex;
+    }
+static void replayData(unsigned long long id,const char *function,
+                       const char *argument,const data_t *data) {
+    if(!data) {
+        LOGGER("REPLAY[%llu] %s %s=null\n",id,function,argument);
+        return;
+        }
+    const size_t len=data->size();
+    if(!len) {
+        LOGGER("REPLAY[%llu] %s %s len=0 hex=\n",id,function,argument);
+        return;
+        }
+    const auto *p=reinterpret_cast<const uint8_t *>(data->data());
+    for(size_t off=0;off<len;off+=256) {
+        const size_t count=std::min(size_t(256),len-off);
+        LOGGER("REPLAY[%llu] %s %s len=%zu offset=%zu hex=%s\n",
+                id,function,argument,len,off,hexstr(p+off,int(count)).str());
+        }
+    }
+static void replayGlucose(unsigned long long id,const char *function,
+                          AlgorithmResults *alg) {
+    if(!alg) {
+        LOGGER("REPLAY[%llu] %s glucose=null\n",id,function);
+        return;
+        }
+    const auto &gl=alg->currentglucose();
+    LOGGER("REPLAY[%llu] %s glucose(id=%d,value=%d,quality=%d,trend=%d,rate=%.9g,lsa=%d)\n",
+           id,function,gl.getId(),gl.getValue(),gl.getQuality(),
+           int(gl.trend()),double(gl.rate()),int(alg->getlsaDetected()));
+    }
+#endif
+
 extern jclasser AlarmC, NonActiona, GluRange, attconf;
 AlgorithmResults *callAbbottAlg(data_t *uid,int startsincebase,scanstate *oldstate,scandata *data,scanstate *newstate,outobj *starttime,outobj *endtime,jobject person,int warmup,int wear) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    const unsigned known_start=startsincebase>0?unsigned(startsincebase):0;
+    return libre2_imp::scan(uid,data->info,data->data,oldstate,newstate,unsigned(data->gettime()-basesecs),starttime,endtime,warmup,known_start);
+#else
+
     LOGSTRING("start callAbbottAlg/3\n");
     const time_t nutime=data->gettime();
     const int lastsincebase=nutime-basesecs;
@@ -413,6 +481,22 @@ JNIEnv *hiersubenv=(JNIEnv *) &hierjnidata;
 debugclone();
 LOGAR("start processScan ");
 const bool vitc=false,isstreaming=true;
+#ifndef NOLOG
+const unsigned long long replayId=++replayCallNumber;
+const char *replayFunction=processScan2_10?"processScan2_10":"processScan2_7";
+LOGGER("REPLAY[%llu] %s(parsertype=%d,vitC=%d,isstreaming=%d,start=%d,last=%d,warmup=%d,wear=%d,timeoffset=%d,person=outobj,token=tokenar)\n",
+       replayId,replayFunction,parsertype,int(vitc),int(isstreaming),
+       startsincebase,lastsincebase,warmup,wear,timeoffset);
+replayData(replayId,replayFunction,"uid.in",uid);
+replayData(replayId,replayFunction,"info.in",data->info);
+replayData(replayId,replayFunction,"data.in",data->data);
+replayData(replayId,replayFunction,"COMP.in",oldstate->get(COMP));
+replayData(replayId,replayFunction,"ATTE.in",oldstate->get(ATTE));
+replayData(replayId,replayFunction,"MESS.in",oldstate->get(MESS));
+replayData(replayId,replayFunction,"token",token);
+LOGGER("REPLAY[%llu] %s person.in=%ld configs=AlarmC,NonActiona,GluRange,attconf\n",
+       replayId,replayFunction,long(reinterpret_cast<outobj *>(person)->toint()));
+#endif
 jobject result;
 if(processScan2_10) {
      result= abbottcall(processScan2_10)(hiersubenv,nullptr, parsertype, alarm, nonAction, range, attenconf, vitc,(jbyteArray)uid, (jbyteArray) data->info,(jbyteArray)data->data ,startsincebase,lastsincebase,warmup,wear, isstreaming,timeoffset , (jbyteArray)oldstate->get(COMP), (jbyteArray)oldstate->get(ATTE), (jbyteArray)oldstate->get(MESS), (jobject)starttime, (jobject)endtime, confinsert, removed, compo, attenu, messstate, outalgres,OutListPatchEvent, person,casttoken);
@@ -422,6 +506,24 @@ else  {
     }
     LOGAR(" end processScan");
     intptr_t res=reinterpret_cast<intptr_t>(result);
+#ifndef NOLOG
+    LOGGER("REPLAY[%llu] %s return=%ld starttime=%ld endtime=%ld person=%ld inserted=%ld removed=%ld\n",
+           replayId,replayFunction,long(res),long(starttime->toint()),long(endtime->toint()),
+           long(reinterpret_cast<outobj *>(person)->toint()),
+           long(reinterpret_cast<intptr_t>(confinsert.ptr)),
+           long(reinterpret_cast<intptr_t>(removed.ptr)));
+    replayData(replayId,replayFunction,"uid.after",uid);
+    replayData(replayId,replayFunction,"info.after",data->info);
+    replayData(replayId,replayFunction,"data.after",data->data);
+    replayData(replayId,replayFunction,"COMP.in.after",oldstate->get(COMP));
+    replayData(replayId,replayFunction,"ATTE.in.after",oldstate->get(ATTE));
+    replayData(replayId,replayFunction,"MESS.in.after",oldstate->get(MESS));
+    replayData(replayId,replayFunction,"COMP.out",static_cast<data_t *>(compo.ptr));
+    replayData(replayId,replayFunction,"ATTE.out",static_cast<data_t *>(attenu.ptr));
+    replayData(replayId,replayFunction,"MESS.out",static_cast<data_t *>(messstate.ptr));
+    replayGlucose(replayId,replayFunction,res==0?
+                  static_cast<AlgorithmResults *>(outalgres.ptr):nullptr);
+#endif
     LOGGER("person=%ld\n",reinterpret_cast<outobj *>(person)->toint());
     if( vector<PatchEvent *> *patch= (vector<PatchEvent *> *)OutListPatchEvent.ptr) {
         LOGGER("number of PatchEvent's=%ld\n",patch->size());
@@ -486,7 +588,9 @@ AlgorithmResults *alg=(AlgorithmResults *)outalgres.ptr;
         delete alg;
         return nullptr;
         }
-    }
+
+#endif
+}
 
 //AlgorithmResults *callAbbottAlg(data_t *uid,int startsincebase,scanstate *oldstate,scandata *data,scanstate *newstate,outobj *starttime,outobj *endtime,jobject person) {
 AlgorithmResults *Abbott::callAbbottAlg(int startsincebase,scanstate *oldstate,scandata *data,scanstate *newstate,outobj *starttime,outobj *endtime,jobject person) {
@@ -512,6 +616,14 @@ Abbott::scanresult_t Abbott::callAbbottAlg(scandata *data) {
         return {nullptr,nullptr};
         }
     scanstate *newstate=new scanstate(sensordir,data->gettime());
+#ifdef LIBRE2_EU_INDEPENDENT
+    if(!newstate->map.data()) {
+        delete newstate;
+        return {nullptr,nullptr};
+        }
+    const bool restore_stream=hist->streamingIsEnabled()==1&&libre2_imp::bluetooth_supported(data->info)&&
+        !libre2_imp::usable_state(state,data->info);
+#endif
 
     time_t nutime=data->gettime();
 
@@ -523,6 +635,7 @@ Abbott::scanresult_t Abbott::callAbbottAlg(scandata *data) {
     LOGGER("startdate: %s",ctime_r(&startDate,timebuf)?timebuf:"null");
 #endif
     int startsincebase=startDate-basesecs;
+#ifndef LIBRE2_EU_INDEPENDENT
 //    const int timelast=nutime-startDate; LOGGER("timelast=%d endsensorsecs=%d\n",timelast,endsensorsecs);
 const    int timeleft=hist->officialendtime()-nutime;
 LOGGER("timeleft=%d\n",timeleft); 
@@ -539,6 +652,7 @@ LOGGER("timeleft=%d\n",timeleft);
         else
             startsincebase+=daysecs;
         }
+#endif
     outobj person,starttime,endtime;
     AlgorithmResults *res=callAbbottAlg(startsincebase,state,data,newstate,&starttime,&endtime,person);
     if(res) {
@@ -565,15 +679,35 @@ extern bool saveSputnik_PG2(const jniHistory &hist,time_t nutime,int nuid,const 
         else {
             LOGGER("senso->finished was %d, set to 0\n",senso->finished);
         //    senso->finished=0;
-            hist->saveglucose(data,newnu,gid,gl.getValue(),res->trend(),res->RateOfChange()); 
+            //hist->saveglucose(data,newnu,gid,gl.getValue(),res->trend(),res->RateOfChange()); 
+
+            const auto &points = res->scanTrendMgL;
+            hist->saveglucose(data, newnu, gid, gl.getValue(), res->trend(), res->RateOfChange(), points ? &*points : nullptr);
+
+
+
             auto last= hist->getScandata();
 //            lastscan=&last.back();
 
+#ifdef LIBRE2_EU_INDEPENDENT
+            bool saved;
+            {
+                std::lock_guard lock(hist->mutex);
+                std::unique_ptr<const char[]> oldfile(getpreviousstate(sensordir).data());
+                saved=newstate->makelink();
+                if(saved&&oldfile&&newstate->filename!=oldfile.get())unlink(oldfile.get());
+            }
+#else
             newstate->makelink();
             state->removefile();
+#endif
             delete state;
             state=newstate;
+#ifdef LIBRE2_EU_INDEPENDENT
+            return {res,&last.back(),saved&&restore_stream};
+#else
             return {res,&last.back()};
+#endif
             }
 
         }
@@ -583,6 +717,11 @@ extern bool saveSputnik_PG2(const jniHistory &hist,time_t nutime,int nuid,const 
     return {res,nullptr};
     }
 Abbott::scanresult_t Abbott::ProcessOne(scandata *data) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    // Recover from NFC with the saved clock and provisioning if the state
+    // file was lost. A first scan takes the initialization path below.
+    if(hist&&hist->getstarttime()>basesecs)return callAbbottAlg(data);
+#endif
     if(!state||!state->good()) {
         delete state;
         state=initnewsensor( data) ;
@@ -615,7 +754,11 @@ scanstate *Abbott::initnewsensor( scandata *data) {
     if(int sindex=sensors->sensorindex(serial.data());sindex>=0) {
         sensorindex=sindex;
          hist=sensors->getSensorData(sindex);
-
+        if(!hist) {
+            LOGGER("initnewsensor: getSensorData(%d)==null\n", sindex);
+            delete alg;
+            return nullptr;
+           }
         if(hist->streamingIsEnabled()==1)
             hist->setbluetoothOn(0);
         }
@@ -645,12 +788,20 @@ extern bool streamHistory() ;
     constexpr const int    threeyear=94694400 ;//2013
     constexpr const int sec_per_day=60*60*24;
     scanstate *newstateptr=new scanstate(sensordir,data->gettime());
+#ifdef LIBRE2_EU_INDEPENDENT
+    if(!newstateptr->map.data()) {
+        delete alg;
+        delete newstateptr;
+        return nullptr;
+        }
+#endif
     jnidata_t  hierjnidata={&envbuf,newstateptr};
     JNIEnv *hiersubenv=(JNIEnv *) &hierjnidata;
 
     data_t *messuit;
 
 
+#ifndef LIBRE2_EU_INDEPENDENT
     const int timeleft=hist->officialendtime()-data->gettime();
     const bool oldsensor=timeleft<=(60*60);
     LOGGER("timeleft=%d oldsensor=%d\n",timeleft,oldsensor); 
@@ -658,6 +809,7 @@ extern bool streamHistory() ;
         startminbase+=daysecs;
         LOGSTRING("Tijdelijk erbij\n");
         }
+#endif
     LOGSTRING("voor activationComplete ");
     debugclone();//Al gedaan
     if( (messuit=reinterpret_cast<data_t *>( abbottcall(activationComplete)(hiersubenv,nullptr,juid, (startminbase > threeyear ? startminbase - threeyear : 0) / sec_per_day, startminbase, (jbyteArray)newstate.get(MESS),casttoken)))&&messuit->length()>0) {
@@ -671,12 +823,17 @@ extern bool streamHistory() ;
         messuit=newstateptr->alloc(messwas->length());
         memcpy(messuit->data(),messwas->data(),messwas->length());
         }
+#ifndef LIBRE2_EU_INDEPENDENT
     if(oldsensor)
         newstateptr->datpos(FAKE)=1;
+#endif
         
     delete alg;
-    newstateptr->makelink();
     newstateptr->setpos(MESS,messuit);
+    if(!newstateptr->makelink()) {
+        delete newstateptr;
+        return nullptr;
+        }
     return newstateptr;
     }
 
@@ -832,6 +989,16 @@ bool doinitnative=false;;
 bool rootcheck=false;
 
 static int doabbottinit(bool dochmod) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    getProductFamily=libre2_imp::family;getPatchTimeValues=libre2_imp::times;
+    getActivationCommand=libre2_imp::activation_command;getActivationPayload=libre2_imp::activation_payload;
+    getEnableStreamingPayload=libre2_imp::enable_payload;getStreamingUnlockPayload=libre2_imp::unlock_payload;
+    activationComplete=libre2_imp::activate_state;
+    P1=libre2_imp::protocol_p1;P2=libre2_imp::protocol_p2;
+    if(settings){settings->setnodebug(true);settings->data()->crashed=false;}
+    rootcheck=false;return 0;
+#else
+
 LOGAR("doabbottinit");
       settings->data()->crashed=true;
 
@@ -967,6 +1134,8 @@ unlink(libpath);
     LOGGER("end getNeedsReaderInfoForActivation=%d\n",res); */
     #endif
         return 0;
+#endif
+
 }
 
 static AlgorithmResults * processBlue(data_t * bluedata, jbyte person,
@@ -1017,8 +1186,13 @@ dontdebug=nodebug?-1:1;
     char *name=new char[dir.size()+1];
     memcpy(name,dir.data(),dir.size());
     name[dir.size()]='\0';
-    globalbasedir={name,dir.size()};
-settings= new(std::nothrow) Settings(globalbasedir,settingsdat,"NL");
+//    globalbasedir={name,dir.size()};
+
+
+   //  startjuggluco(std::string_view dirfiles,const char *country) ;
+ void initinjuggluco(std::string_view dirfiles,const char *country) ;
+    initinjuggluco({name,dir.size()},"NL");
+//settings= new(std::nothrow) Settings(globalbasedir,settingsdat,"NL");
     usepath();
 
     pid_t debugpid=nodebug?0:debugclone();
@@ -1039,7 +1213,7 @@ settings= new(std::nothrow) Settings(globalbasedir,settingsdat,"NL");
         #include "getActivationPayload.h"
         if(memcmp(payload->data(),getActivationPayload,payload->size()))
             return 12;
-        LOGGER("getActivationPayload=%d\n",payload?payload->length():-1);
+        LOGGER("getActivationPayload(%d,%s,%s,0)=%d\n",parsertype,hexstr(uidptr).str(),hexstr(infoptr).str(),payload?payload->length():-1);
         }
     else {
         LOGSTRING("getActivationPayload failed");
@@ -1049,13 +1223,13 @@ settings= new(std::nothrow) Settings(globalbasedir,settingsdat,"NL");
     int fam= 
 #endif
                 abbottcall(getProductFamily)(hiersubenv2, nullptr, parsertype,  (jbyteArray)  infoptr,casttoken);
-    LOGGER("Family=%d\n",fam);
+    LOGGER("getProductFamily()=%d\n",fam);
     auto [warm,wear]= patchtimevalues(infoptr);
     if(wear==0) {
         LOGSTRING("patchtimefailure\n");
         return 12;
         }
-    LOGGER("warm=%d wear=%d\n",warm,wear);
+    LOGGER("patchtimevalues warm=%d wear=%d\n",warm,wear);
     scanstate state(4);
        if(const data_t* pay= ::getStreamingPayload(&state,uidptr, infoptr, tijd) ) {
 //        pathconcat struit(dir,"getStreamingPayload"); writeall(struit.data(),pay->data(),pay->length());
@@ -1093,7 +1267,7 @@ jnidata_t  hierjnidata3={&envbuf,&state};
 jnidata_t  hierjnidata={&envbuf,&state};
 JNIEnv *hiersubenv=(JNIEnv *) &hierjnidata;
     if(data_t *res= reinterpret_cast<data_t *>(abbottcall(getStreamingUnlockPayload)(hiersubenv,nullptr,parsertype,(jbyteArray)uidptr,(jbyteArray)infoptr,person,startsincebase,lockcount,casttoken))) {
-        LOGGER(" getStreamingUnlockPayload len=%d\n",res->size());
+        LOGGER(" getStreamingUnlockPayload(%d,%s,%s,%d,%u,%d)=%s\n",parsertype,hexstr(uidptr).str(),hexstr(infoptr).str(),person,startsincebase,lockcount,hexstr(res).str());
         #include "getStreamingUnlockPayload.h"
         if(memcmp(res->data(),getStreamingUnlockPayload,res->size()))
             return 12;
@@ -1182,19 +1356,20 @@ timevalues     patchtimevalues(const data_t *info) {
     outobj warmup, wear;
     abbottinit();
     debugclone();
-  if(abbottcall(getPatchTimeValues)(subenv,nullptr,parsertype, (jbyteArray) info, warmup, wear,casttoken)) {
+  const auto success=abbottcall(getPatchTimeValues)(subenv,nullptr,parsertype, (jbyteArray) info, warmup, wear,casttoken);
+  LOGGER("getPatchTimeValues(%d,%s)=(%d,%ld,%ld)\n",parsertype,
+         info?hexstr(info).str():"null",int(success),long(warmup.toint()),long(wear.toint()));
+  if(success) {
       const auto warmupget=(uint16_t)warmup.toint();
       const auto wearget=(uint16_t)wear.toint();
-      LOGGER("patchtimevalues warmup=%d wear=%d\n",warmupget,wearget);
         return  {warmupget, wearget};
             }
      LOGAR("patchtimevalues failed");
      return {0,0};
     }
 jbyte  getactivationcommand(const data_t *info) {
-    LOGSTRING("start getActivationCommand ");
         jbyte res= abbottcall(getActivationCommand)(subenv,nullptr, parsertype, (jbyteArray) info,casttoken);
-    LOGSTRING(" end getActivationCommand\n");
+        LOGGER("getActivationCommand(%d,%s)=%d\n",parsertype,hexstr(info).str(),int(res));
         return res;
         }
 /*
@@ -1224,22 +1399,38 @@ extern "C" JNIEXPORT jbyte JNICALL fromjava(activationcommand)(JNIEnv* env, jcla
     abbottinit();
     debugclone(); //Nodig?
     LOGAR("start getActivationCommand");
+#ifndef NOLOG
+    auto infohex=replayJavaHex(env,info);
+#endif
    jbyte res=  abbottcall(getActivationCommand)(env,obj, parsertype, info,getjtoken(env));
-    LOGAR(" end getActivationCommand");
+#ifndef NOLOG
+    LOGGER("getActivationCommand(%d,%s)=%d\n",parsertype,infohex.c_str(),int(res));
+#endif
     return res;
     }
 extern "C" JNIEXPORT jbyteArray  JNICALL fromjava(activationpayload)(JNIEnv *env, jclass obj,  jbyteArray patchid, jbyteArray info, jbyte person)  {
     abbottinit();
     debugclone(); //Nodig?
-    LOGSTRING("start getActivationPayload ");
+#ifndef NOLOG
+    auto patchhex=replayJavaHex(env,patchid),infohex=replayJavaHex(env,info);
+#endif
     jbyteArray res=   abbottcall(getActivationPayload)(env, obj,  parsertype,  patchid,  info, person,getjtoken(env)) ;
-    LOGSTRING("end getActivationPayload\n");
+#ifndef NOLOG
+    LOGGER("getActivationPayload(%d,%s,%s,%d)=%s\n",parsertype,
+           patchhex.c_str(),infohex.c_str(),int(person),replayJavaHex(env,res).c_str());
+#endif
     return res;
         }
 
 bool streamHistory() {
+#ifdef LIBRE2_EU_INDEPENDENT
+    return true;
+#else
+
     return processStream2_10;
-    }
+
+#endif
+}
 
 //info and startsincebase should be the same as used by getEnableStreamingPayload
 #define MODTIME
@@ -1256,9 +1447,10 @@ JNIEnv *hiersubenv=(JNIEnv *) &hierjnidata;
         }
     debugclone();
     auto lock= usedhist->nextlock();
-    LOGGER("start getStreamingUnlockPayload(env,null,%d,%s,%s,%d,%d,%d,token)\n",parsertype,hexstr(usedhist->getsensorident()).str(),hexstr(info).str(),person,startsincebase,lock);
     data_t *res= reinterpret_cast<data_t *>(abbottcall(getStreamingUnlockPayload)(hiersubenv,nullptr, parsertype, (jbyteArray)usedhist->getsensorident(), (jbyteArray)info, person, startsincebase, lock,casttoken));
-    LOGAR(" end getStreamingUnlockPayload");
+    LOGGER("getStreamingUnlockPayload(%d,%s,%s,%d,%d,%d)=%s\n",
+           parsertype,hexstr(usedhist->getsensorident()).str(),hexstr(info).str(),
+           int(person),startsincebase,lock,res?hexstr(res).str():"null");
     return res;
     }
 static AlgorithmResults * processBlue(data_t * bluedata, jbyte person,
@@ -1269,6 +1461,10 @@ const data_t *info,
 #endif
 scanstate *state,
 scanstate *newstate,uint32_t startsincebase,uint32_t nutime,int warmup,int wear) {
+#ifdef LIBRE2_EU_INDEPENDENT
+    return libre2_imp::stream(ident,info,bluedata,state,newstate,unsigned(nutime-basesecs),startsincebase);
+#else
+
     jint nusincebase=nutime-basesecs;
     algobj alarm{&AlarmC},nonAction{&NonActiona};
     algobj range{&GluRange}, attenconf{&attconf};
@@ -1283,6 +1479,25 @@ LOGAR("start processStream");
 constexpr const bool isstreaming=true;
 [[maybe_unused]] auto _deb=debugclone();
 LOGGER("before proc oldprocessStream=%p\n",oldprocessStream);
+#ifndef NOLOG
+const unsigned long long replayId=++replayCallNumber;
+const char *replayFunction=oldprocessStream?"processStream_old":
+            (processStream2_10?"processStream2_10":"processStream2_7");
+LOGGER("REPLAY[%llu] %s(parsertype=%d,person=%d,start=%u,now=%d,warmup=%d,wear=%d,isstreaming=%d,token=tokenar)\n",
+       replayId,replayFunction,parsertype,int(person),startsincebase,nusincebase,
+       warmup,wear,int(isstreaming));
+replayData(replayId,replayFunction,"ident.in",ident);
+#ifdef HASP1
+replayData(replayId,replayFunction,"info.in",info);
+#endif
+replayData(replayId,replayFunction,"bluetooth.in",bluedata);
+replayData(replayId,replayFunction,"COMP.in",state->get(COMP));
+replayData(replayId,replayFunction,"ATTE.in",state->get(ATTE));
+replayData(replayId,replayFunction,"MESS.in",state->get(MESS));
+replayData(replayId,replayFunction,"token",token);
+LOGGER("REPLAY[%llu] %s configs=AlarmC,NonActiona,GluRange,attconf\n",
+       replayId,replayFunction);
+#endif
 intptr_t  res=
 (oldprocessStream?
 reinterpret_cast<intptr_t>(abbottcall(oldprocessStream)(hiersubenv,nullptr, parsertype, alarm, nonAction, range, attenconf, (jbyteArray)ident, 
@@ -1324,6 +1539,22 @@ outalgres,casttoken)): reinterpret_cast<intptr_t>(abbottcall(processStream2_10)(
 outalgres,casttoken))));
 
 #ifndef NOLOG
+LOGGER("REPLAY[%llu] %s return=%ld starttime=%ld endtime=%ld inserted=%ld removed=%ld\n",
+       replayId,replayFunction,long(res),long(outstarttime.toint()),long(endtime.toint()),
+       long(reinterpret_cast<intptr_t>(confinsert.ptr)),long(reinterpret_cast<intptr_t>(removed.ptr)));
+replayData(replayId,replayFunction,"ident.after",ident);
+#ifdef HASP1
+replayData(replayId,replayFunction,"info.after",info);
+#endif
+replayData(replayId,replayFunction,"bluetooth.after",bluedata);
+replayData(replayId,replayFunction,"COMP.in.after",state->get(COMP));
+replayData(replayId,replayFunction,"ATTE.in.after",state->get(ATTE));
+replayData(replayId,replayFunction,"MESS.in.after",state->get(MESS));
+replayData(replayId,replayFunction,"COMP.out",static_cast<data_t *>(compo.ptr));
+replayData(replayId,replayFunction,"ATTE.out",static_cast<data_t *>(attenu.ptr));
+replayData(replayId,replayFunction,"MESS.out",static_cast<data_t *>(messstate.ptr));
+replayGlucose(replayId,replayFunction,res==0?
+              static_cast<AlgorithmResults *>(outalgres.ptr):nullptr);
 int isremoved=reinterpret_cast<intptr_t>(removed.ptr);
 int isinserted=reinterpret_cast<intptr_t>(confinsert.ptr);
 LOGGER("end processStream %ld, %sinserted and %sremoved\n",res, isinserted?"":"not ", isremoved?"":"not ");
@@ -1337,6 +1568,8 @@ newstate->setpos(COMP,static_cast<data_t *>(compo.ptr));
 newstate->setpos(ATTE,static_cast<data_t *>(attenu.ptr));
 newstate->setpos(MESS,static_cast<data_t *>(messstate.ptr));
 return (AlgorithmResults *)outalgres.ptr;
+
+#endif
 };
 
 
@@ -1407,9 +1640,10 @@ JNIEnv *hiersubenv=(JNIEnv *) &hierjnidata;
 //    basismap.reset(); reinterpret_cast<jnidata_t *>(subenv)->map=&basismap;
     abbottinit();
     debugclone(); //Nodig?
-    LOGSTRING("start getStreamingPayload ");
     const data_t *pay= reinterpret_cast<data_t *>(abbottcall(getEnableStreamingPayload)(hiersubenv,nullptr, parsertype, (jbyteArray)sensorident, (jbyteArray)patchinfo, person, timeminbase,casttoken));
-    LOGSTRING(" end getStreamingPayload\n");
+    LOGGER("getEnableStreamingPayload(%d,%s,%s,%d,%d)=%s\n",
+           parsertype,hexstr(sensorident).str(),hexstr(patchinfo).str(),
+           int(person),timeminbase,pay?hexstr(pay).str():"null");
     return pay;
     }
 extern "C" JNIEXPORT jbyteArray  JNICALL fromjava(bluetoothOnKey)(JNIEnv *envin, jclass cl,jbyteArray sensorident, jbyteArray patchinfo) {
@@ -1486,12 +1720,24 @@ extern "C" JNIEXPORT void  JNICALL fromjava(bluetoothback)(JNIEnv *envin, jclass
 //extern "C" JNIEXPORT jbyteArray  JNICALL fromjava(hasBluetooth)(JNIEnv *envin, jclass cl,jbyteArray sensorident,jbyteArray patchinfo,jlong tim) {
 extern "C" JNIEXPORT jboolean  JNICALL fromjava(hasBluetooth)(JNIEnv *envin, jclass cl,jbyteArray sensorident,jbyteArray patchinfo) {
     abbottinit();
+#ifdef LIBRE2_EU_INDEPENDENT
+    if(!patchinfo||envin->GetArrayLength(patchinfo)!=6)return JNI_FALSE;
+    auto info=fromjbyteArray(envin,patchinfo);const bool capable=libre2_imp::bluetooth_supported(info);
+    data_t::deleteex(info);return capable;
+#else
     const jint timeminbase= time(NULL)-basesecs;
     LOGAR("start getStreamingPayload");
     debugclone();
+#ifndef NOLOG
+    auto sensorhex=replayJavaHex(envin,sensorident),infohex=replayJavaHex(envin,patchinfo);
+#endif
     jbyteArray res=abbottcall(getEnableStreamingPayload)(envin,cl, parsertype, sensorident, patchinfo, 0, timeminbase,getjtoken(envin));
-    LOGSTRING("end getStreamingPayload\n");
+#ifndef NOLOG
+    LOGGER("getEnableStreamingPayload(%d,%s,%s,0,%d)=%s\n",parsertype,
+           sensorhex.c_str(),infohex.c_str(),timeminbase,replayJavaHex(envin,res).c_str());
+#endif
     return res!=nullptr;
+#endif
     }
 
 #include "hex.hpp"
@@ -1573,14 +1819,28 @@ scanstate * testinitsensor( scandata *data,data_t *uid,scanstate *newstateptr) {
     constexpr const int    threeyear=94694400 ;//2013
     constexpr const int sec_per_day=60*60*24;
     jint startminbase=starttime.toint();
-//    time_t start=basesecs+startminbase;
+    time_t start=basesecs+startminbase;
 
 jnidata_t  hierjnidata={&envbuf,newstateptr};
 JNIEnv *hiersubenv=(JNIEnv *) &hierjnidata;
 
     data_t *messuit;
 
-    if((messuit=reinterpret_cast<data_t *>( abbottcall(activationComplete)(hiersubenv,nullptr,juid, (startminbase > threeyear ? startminbase - threeyear : 0) / sec_per_day, startminbase, (jbyteArray)newstate.get(MESS),casttoken)))&&messuit->length()>0) {
+    LOGGER("callAbbottAlg starttime=%u %s",start,ctime(&start));
+    const jint activationday=(startminbase > threeyear ? startminbase - threeyear : 0) / sec_per_day;
+#ifndef NOLOG
+    const auto activationId=++replayCallNumber;
+    LOGGER("REPLAY[%llu] activationComplete(uid=%s,day=%d,start=%d,token=tokenar)\n",
+           activationId,hexstr(uid).str(),activationday,startminbase);
+    replayData(activationId,"activationComplete","MESS.in",newstate.get(MESS));
+    replayData(activationId,"activationComplete","token",token);
+#endif
+    messuit=reinterpret_cast<data_t *>(abbottcall(activationComplete)(hiersubenv,nullptr,juid,
+                   activationday,startminbase,(jbyteArray)newstate.get(MESS),casttoken));
+#ifndef NOLOG
+    replayData(activationId,"activationComplete","return",messuit);
+#endif
+    if(messuit&&messuit->length()>0) {
             LOGSTRING(" activationComplete>0\n");
         newstateptr->makenull(COMP);    //NODIG?
         newstateptr->makenull(ATTE);    

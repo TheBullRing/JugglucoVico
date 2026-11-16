@@ -150,6 +150,14 @@ public MainActivity() {
     private static final String LOG_ID = "MainActivity";
     private NfcAdapter mNfcAdapter=null;
 private boolean started=false;
+
+void bothUnitsSettings() {
+       final int unit=Natives.getunit();
+       if(!(unit==1||unit==2)) {
+              Applic.postDelayed(()->tk.glucodata.settings.Settings.set(this),1000L);
+              }
+        }
+
 private void startall() {
      if(doLog) {Log.d(LOG_ID, "startall");};
      if(!started) {
@@ -157,14 +165,11 @@ private void startall() {
         netinitstep();
         if(isWearable) {
             if(Natives.hasData())  {
-               final int unit=Natives.getunit();
-               if(!(unit==1||unit==2)) {
-                      Applic.postDelayed(()->tk.glucodata.settings.Settings.set(this),1000L);
-                      }
+                bothUnitsSettings();
                 }
             else {
-               Specific.initScreen(this);
-               }
+                Specific.initScreen(this);
+                }
             }
         else {
              //  lightBars(!getInvertColors( ));
@@ -181,10 +186,7 @@ private void startall() {
                    help.help(R.string.introhelp,act,
                        l->{ setShownintro(true);
                            act.lightBars(!Natives.getInvertColors()); 
-                           final int unit=Natives.getunit();
-                           if(!(unit==1||unit==2)) {
-                                  tk.glucodata.settings.Settings.set(act);
-                                }
+                           bothUnitsSettings();
                           }); 
                    }
                 }
@@ -1237,6 +1239,19 @@ long nexttime= 0L;
 
 
 
+private static boolean isDexcomNfc(Tag tag) {
+    var b = android.nfc.tech.NfcB.get(tag);
+    if (b == null || android.nfc.tech.IsoDep.get(tag) == null)
+        return false;
+
+    return java.util.Arrays.equals(tag.getId(),
+                new byte[]{0x31, 0x41, 0x59, 0x27})
+        && java.util.Arrays.equals(b.getApplicationData(),
+                new byte[]{0x50, 0x59, 0x2D, 0x00})
+        && java.util.Arrays.equals(b.getProtocolInfo(),
+                new byte[]{0x00, 0x21, (byte)0x81});
+     }
+
 
 synchronized void   startnfc(Tag tag) {
     
@@ -1272,7 +1287,34 @@ synchronized void   startnfc(Tag tag) {
 
         if(!isWearable) {
             if(hasTech(techs,"android.nfc.tech.IsoDep")) {
-               if(doLog){showbytes("tag", tag.getId());};
+               if(doLog){
+                   showbytes("NFC tag", tag.getId());
+                   var b = android.nfc.tech.NfcB.get(tag);
+                   if (b != null) {
+                        var appData = b.getApplicationData();
+                        var protocol = b.getProtocolInfo();
+
+                        if (appData != null)
+                            showbytes("NfcB applicationData", appData);
+                        if (protocol != null)
+                            showbytes("NfcB protocolInfo", protocol);
+
+                        var iso = android.nfc.tech.IsoDep.get(tag);
+                        if (iso != null) {
+                            var high = iso.getHiLayerResponse();
+                            if (high != null)
+                                showbytes("NfcB higherLayerResponse", high);
+                        }
+                       }
+                    }
+                if(isDexcomNfc(tag)) {
+                   ScanNfcV.failure(ScanNfcV.getvibrator(this) );
+                   // Applic.argToasterWait(this,"The data matrix on the applicator of Dexcom G7/ONE+ sensors should be scanned with left menu->Photo");
+RunOnUiThread(() ->
+                   Confirm.message(this,R.string.dexcomG7NFCtitle,R.string.dexcomG7NFCmessage,()->{}));
+                    return;
+                    }
+
                tk.glucodata.NovoPen.Scan.onTag(this,tag);
                return;
                }
@@ -2123,15 +2165,22 @@ void showindialog(String message,boolean cancel) {
             Applic.app.numdata.stopalarm();
             }
         }).setTitle("  ").setMessage(message).create();;
+
        dialog.setCanceledOnTouchOutside(false);
         dialog.setOnShowListener(a ->  {
             final var colres= android.R.color.holo_orange_light; //Very infrequently button not shown. Maybe this helps.
-        final var col=
-           (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)?getResources().getColor(colres, getTheme()):
-                getResources().getColor(colres);
-         var negbut=dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-        negbut.setTextColor(col);
-        }    
+            final var col=
+               (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)?getResources().getColor(colres, getTheme()):
+                    getResources().getColor(colres);
+             var negbut=dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            negbut.setTextColor(col);
+            if(!isWearable) {
+                TextView textView = (TextView) dialog.findViewById(android.R.id.message);
+                if(textView!=null)
+                    textView.setTextSize(Applic.mediumfontsize*.62f);
+                    }    
+//                negbut.setTextSize(Applic.mediumfontsize);
+                }
             );
 
     dialog.show();
@@ -2413,8 +2462,8 @@ private static void keepNormalClick(TextView text) {
                         event.getEventTime() - event.getDownTime() < longPressTimeout) {
                         v.cancelLongPress();
                         v.setPressed(false);
-                        if (v.isEnabled())
-                            v.performClick();
+                        if(v.isEnabled())
+                            v.post(v::performClick);
                         return true;
                     }
                     return false;

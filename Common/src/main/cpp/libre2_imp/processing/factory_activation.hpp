@@ -18,36 +18,32 @@
 /*      You should have received a copy of the GNU General Public License            */
 /*      along with Juggluco. If not, see <https://www.gnu.org/licenses/>.            */
 /*                                                                                   */
-/*      Thu Oct 15 12:54:42 CEST 2026                                                */
+/*      Sun Nov 15 13:57:27 CET 2026                                                 */
 
-// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
-#include <string>
-#include <string_view>
-
-namespace jgchat {
-// Browser URLs percent-encode secrets used as a path segment. Authenticate the
-// complete decoded segment before stripping it; never decode the API/file path.
-inline bool consume_encoded_secret(std::string_view& target, std::string_view secret) {
-    if (secret.empty()) return false;
-    const auto slash = target.find('/');
-    if (slash == std::string_view::npos || slash > secret.size() * 3 || slash + 1 >= target.size() ||
-        target[slash + 1] <= ' ' || target.substr(0, slash).find('%') == std::string_view::npos) return false;
-    auto hex = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; };
-    std::string decoded;
-    for (std::size_t i = 0; i < slash; ++i) {
-        char c = target[i];
-        if (c == '%') {
-            if (i + 2 >= slash) return false;
-            const int a = hex(target[i + 1]), b = hex(target[i + 2]);
-            if (a < 0 || b < 0) return false;
-            c = static_cast<char>((a << 4) | b); i += 2;
-        }
-        decoded += c;
-        if (decoded.size() > secret.size()) return false;
-    }
-    if (decoded != secret) return false;
-    target.remove_prefix(slash + 1);
-    return true;
+#include "recovered_components.hpp"
+#include <bit>
+namespace libre2_processing {
+struct FactoryActivation {
+    std::int16_t activation_day{};
+    std::uint16_t storage_days{};
+    FactoryCoefficients coefficients{};
+};
+// Native 0x221ecc. This timestamp is Unix seconds, not the algorithm's
+// separately stored 2010-epoch timestamp. The native code narrows the computed
+// day to int16 before comparing it with the unsigned manufacturing day.
+inline FactoryActivation derive_factory_activation(const FactoryMetadata& metadata,
+        std::uint32_t unix_seconds,const std::array<std::int32_t,4>& profile){
+    const int day=int(unix_seconds/86400u)-15706;
+    FactoryActivation out{};
+    out.activation_day=std::bit_cast<std::int16_t>(std::uint16_t(day));
+    if(int(out.activation_day)>int(metadata.factory_day))
+        out.storage_days=std::uint16_t(int(out.activation_day)-int(metadata.factory_day));
+    out.coefficients=calculate_factory_coefficients(metadata.index,out.storage_days,metadata.correction_code,profile);
+    return out;
 }
+inline FactoryActivation derive_factory_activation(const FactoryMetadata& metadata,
+        std::uint32_t unix_seconds){
+    return derive_factory_activation(metadata,unix_seconds,native_factory_parameters);
 }
+} // namespace libre2_processing

@@ -328,8 +328,7 @@ boolean makeQR(MainActivity act,int pos) {
           else {
                 hostadapt.notifyItemInserted(pos);
                 final int transport=Natives.getbackuptransport(pos);
-                if(transport==BleMirror.TRANSPORT_BLUETOOTH||
-                        (transport==BleMirror.TRANSPORT_AUTOMATIC&&!isWearable&&!Natives.isWearOS(pos)))
+                if(transport==BleMirror.TRANSPORT_BLUETOOTH||(transport==BleMirror.TRANSPORT_AUTOMATIC&&!isWearable&&!Natives.isWearOS(pos)))
                    // Refresh/cache permission state before configurationChanged()
                    // is allowed to start BLE scanning or advertising.
                    act.finepermission();
@@ -695,8 +694,8 @@ CheckDirectionBox ICE;
             Applic.argToaster(act,R.string.notalldata ,Toast.LENGTH_LONG);
             }        
          configchanged=true;
-         final boolean needsBlePermission=selectedTransport==BleMirror.TRANSPORT_BLUETOOTH||
-                 (selectedTransport==BleMirror.TRANSPORT_AUTOMATIC&&!isWearable&&!Natives.isWearOS(pos));
+         final boolean needsBlePermission=!ice&&(selectedTransport==BleMirror.TRANSPORT_BLUETOOTH||
+                 (selectedTransport==BleMirror.TRANSPORT_AUTOMATIC&&!isWearable&&!Natives.isWearOS(pos)));
          if(needsBlePermission)
             // Refresh/cache permission state before configurationChanged() can
             // start BLE work for a newly enabled mirror.
@@ -777,11 +776,11 @@ CheckDirectionBox ICE;
             final int[] ret = {w, h};
             return ret;
 
-         }, firstrow,new View[]{ICE,ICElabellabel,ICElabel,zero,one},editIPs, new View[]{testip, haslabel, label},
+         }, firstrow,new View[]{ICE,zero,one},new  View[]{ICElabellabel,ICElabel},editIPs, new View[]{testip, haslabel, label},
                directions, new View[]{receive, Sendlabel, Amounts, Scans, Stream, restore}, fromrow, withqr,new View[]{transportLabel,transportAutomatic,transportTcp,transportBluetooth,transportMessages}, new View[]{delete, Close, reset, Help, save})
             .portraitLayout(
 new View[]{Portlabel,portedit,checkhostname},new View[]{IPslabel,detect},
-               new View[]{ICE,ICElabellabel},new View[]{ICElabel},new View[]{zero,one},
+               new View[]{ICE,zero,one},new View[]{ICElabellabel},new View[]{ICElabel},
                new View[]{editIPs[0],editIPs[1]},new View[]{editIPs[2],editIPs[3]},
                new View[]{testip,haslabel},new View[]{label},directions,
                new View[]{receive,Sendlabel},new View[]{Amounts,Scans,Stream},new View[]{restore},
@@ -1419,22 +1418,7 @@ private int getMirrorListColor(MainActivity act) {
             sb.append(label);
             sb.append(" ");
             }
-       if(isWearable&&transport==BleMirror.TRANSPORT_BLUETOOTH)
-          sb.append("[Bluetooth] ");
-       else if(isWearable&&transport==BleMirror.TRANSPORT_MESSAGES)
-          sb.append("[Messages] ");
-       else if(isWearable&&transport==BleMirror.TRANSPORT_TCP)
-          sb.append("[TCP only] ");
        if(!isWearable) {
-          if(transport==BleMirror.TRANSPORT_BLUETOOTH) {
-               sb.append("[Bluetooth] ");
-               }
-          else if(transport==BleMirror.TRANSPORT_MESSAGES) {
-               sb.append("[Messages] ");
-               }
-          else if(transport==BleMirror.TRANSPORT_TCP) {
-               sb.append("[TCP only] ");
-               }
           if(transport==BleMirror.TRANSPORT_AUTOMATIC||transport==BleMirror.TRANSPORT_TCP) {
              if(ICElabelstr==null) {
                   sb.append((names!=null&&names.length!=0)?names[0]:(Natives.detectIP(pos)?"Detect":"---"));

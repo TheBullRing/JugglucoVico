@@ -99,7 +99,7 @@
   <string name="stage">Stufe</string>
   <string name="use_bluetooth">Bluetooth nutzen</string>
   <string name="connection">Verbindung</string>
-  <string name="unlock_key">Handshake</string>
+  <string name="handshake">Handshake</string>
   <string name="glucose_value">Glukosewert</string>
   <string name="info">Info</string>
   <string name="devicespecific">Gerätespezifische Einstellung festlegen</string>
@@ -602,6 +602,7 @@
 <string name="clarity_labels_changed">Etiketten geändert; Kategorien erneut öffnen</string>
 <string name="clarity_save_categories_error">Kategorien können nicht gespeichert werden</string>
 <string name="clarity_login_success">Angemeldet. Verwenden Sie „Zurück“, um zu den Clarity-Einstellungen zurückzukehren.</string>
-
+<string name="dexcomG7NFCtitle">Foto</string>
+<string name="dexcomG7NFCmessage">Der Data-Matrix-Code auf dem Applikator von Dexcom G7/ONE+-Sensoren sollte über das linke Menü -> Foto gescannt werden.</string>
 </resources>
 

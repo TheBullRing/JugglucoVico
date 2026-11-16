@@ -69,7 +69,13 @@ constexpr const uLong hashfunc(const char *d, int len) {
     return crc32(0,(const unsigned char*)d,len);
     }
 int hostselect(std::string_view name) {
-    int hash=hashfunc(name.data(),name.size())%nrhostnames;
+
+    int hash=
+#ifdef TESTHERE
+    3;
+#else
+    hashfunc(name.data(),name.size())%nrhostnames;
+#endif
     LOGGERICE("hostselect(%.*s)=%d %.*s\n",name.data(),name.data(),hash,hostnames[hash].size(),hostnames[hash].data());
     return hash;
     }
@@ -126,8 +132,8 @@ static void on_recv1(juice_agent_t *agent, const char *data, size_t size, void *
 
 class CreateAgentData {
 public:
-   CreateAgentData(std::string_view commonLabel,bool side,const char *sdp,int sdplen=-1):
-    agent(Agent_data::newAgent('0'+side,commonLabel,{sdp,(sdplen==-1?strlen(sdp):sdplen)})) {
+   CreateAgentData(std::string_view commonLabel,bool side,const char *sdp,int sdplen=-1): 
+                     agent(Agent_data::newAgent(commonLabel, side,sdp,sdplen)) {
             };
     ~CreateAgentData() {
         Agent_data::deleteAgent(agent);
@@ -183,8 +189,8 @@ static void getAddressesThread(juice_agent *agent,std::string_view commonLabel,b
                   };break;
               default: {
                 LOGGERICE("getaddress %s %d: Http error\n",commonLabel.data(),side);
-                sleep(10);
                 ++errors;
+                sleep(errors*2);
                 };break;
                 };
           }
@@ -192,7 +198,87 @@ static void getAddressesThread(juice_agent *agent,std::string_view commonLabel,b
      } 
 
 
+void ICEConnect::processCandidate(Agent_data *sdpDataptr){
+   static std::string_view address{"/address"};
+       for(int i=0;;) {
+           if(finish) {
+                LOGAR("processCandidate finish");
+                break;
+                }
+           auto [resbody,code]=ContextHTTPS::getContext().putRequest(hostnames[hostindex],port,address,std::span((const char *)sdpDataptr,sdpDataptr->datalen()));
+           if(code==200) {
+                 LOGGERICE( "putaddress %s %d: success: %s\n",sdpDataptr->getDescription().data(),sdpDataptr->getWhere(), sdpDataptr->getLabel().data());
+                break;
+                }
+           if(code==400) {
+                LOGGERICE( "putaddress %s %d: failed: %s\n",sdpDataptr->getDescription().data(),sdpDataptr->getWhere(), sdpDataptr->getLabel().data());
 
+                break;
+                }
+          LOGGERICE("putaddress %s %d: ERROR: %s\n", sdpDataptr->getDescription().data(),sdpDataptr->getWhere(), sdpDataptr->getLabel().data());
+
+              if(i<19) {
+                  sleep(++i);
+                  }
+             else 
+                break;
+          }
+          Agent_data::deleteAgent(sdpDataptr);
+      };
+
+
+void ICEConnect::clearCandidates() {
+   {
+    std::lock_guard<std::mutex> lock(candidate_mutex);
+    for(Agent_data *ptr:candidates) {
+         Agent_data::deleteAgent(ptr);
+        }
+    candidates.clear();
+    noCandidates.test_and_set();
+    }
+  }
+void ICEConnect::handleCandidates() {
+    LOGGER("start handleCandidates allindex=%d\n",allindex);
+    destruct _{[allindex=allindex]{
+        LOGGER("end handleCandidates allindex=%d\n",allindex);
+        }};
+
+
+    while(!finish) {
+          candidate_mutex.lock();
+          while(candidates.empty()) {
+            noCandidates.test_and_set();
+            candidate_mutex.unlock();
+            if(finish)
+                return;
+            noCandidates.wait(true); 
+            candidate_mutex.lock();
+            }
+        if(finish) {
+            candidate_mutex.unlock();
+            return;
+            }
+        auto el=candidates.front();
+        candidates.pop_front();
+        candidate_mutex.unlock();
+        processCandidate(el);
+        }
+     }
+static void on_candidate1(juice_agent_t *agent, const char *sdp, void *user_ptr) {
+   const int allindex=(int)(long)user_ptr;
+    auto con=getconnectionas<ICEConnect>(allindex);
+
+   const passhost_t &host= getBackupHosts()[allindex];
+   auto *sdpDataptr=Agent_data::newAgent(host.getICEname(),host.side,sdp) ;
+   {
+    std::lock_guard<std::mutex> lock(con->candidate_mutex);
+    con->candidates.emplace_back(sdpDataptr);
+    con->noCandidates.clear();
+    con->noCandidates.notify_all();
+   }
+   }
+
+/*
 static void on_candidate1(juice_agent_t *agent, const char *sdp, void *user_ptr) {
    const int allindex=(int)(long)user_ptr;
     auto con=getconnectionas<ICEConnect>(allindex);
@@ -200,7 +286,7 @@ static void on_candidate1(juice_agent_t *agent, const char *sdp, void *user_ptr)
    const passhost_t &host= getBackupHosts()[allindex];
    static std::string_view address{"/address"};
    CreateAgentData sdpdata(host.getICEname(),host.side,sdp) ;
-   for(int i=0;i<20;++i) {
+   for(int i=0;;++i) {
        auto [resbody,code]=ContextHTTPS::getContext().putRequest(hostnames[con->hostindex],port,address,std::span((const char *)sdpdata.data(),sdpdata.size()));
        if(code==200) {
              LOGGERICE( "putaddress %s %d: success: %s\n",host.getICEname().data(),host.side, sdp);
@@ -211,10 +297,14 @@ static void on_candidate1(juice_agent_t *agent, const char *sdp, void *user_ptr)
             break;
             }
       LOGGERICE("putaddress %s %d: ERROR: %s\n",host.getICEname().data(),host.side,  sdp);
-      sleep(20);
+      if(i<19) {
+          sleep(20);
+          }
+     else 
+        break;
       }
    }
-
+*/
 
 // Agent 1: on local candidates gathering done
 static void on_gathering_done1(juice_agent_t *agent, void *user_ptr) {
@@ -228,9 +318,11 @@ static void on_gathering_done1(juice_agent_t *agent, void *user_ptr) {
             LOGGERICE("connection[%d]==NULL\n",allindex);
             return;
             }
+
         CreateAgentData body(host.getICEname(),host.side,con->sdp,con->sdplen);
         std::string_view done{"/done"sv};
         con->startDone.wait(true);
+        int retries=0; 
         while(true) {
             auto [resbody,code]=ContextHTTPS::getContext().putRequest(hostnames[con->hostindex],port,done,std::span((const char *)body.data(),body.size()));
             if(code==200) {
@@ -242,12 +334,13 @@ static void on_gathering_done1(juice_agent_t *agent, void *user_ptr) {
                 break;
                 }
             LOGGERICE("%s %d: ERROR DONE code=%d\n",host.getICEname().data(),host.side,code);
-            sleep(10);
+            sleep(++retries*2);
             if(con->finish) {
                 LOGARICE("Finish  thread");
                 return;
                 }
               };
+          con->clearCandidates();
           }};
        th.detach();
     }
@@ -376,16 +469,17 @@ static void on_state_changed1(juice_agent_t *agent, juice_state_t state, void *u
                         LOGGERICE("connections[%d]==NULL\n",allindex);
                         return;
                         }
+                    con->clearCandidates();
                     CreateAgentData body(host.getICEname(),host.side,con->sdp,con->sdplen);
                     std::string_view failure{"/failure"sv};
-                    for(int i=0;i<20;++i) {
+                    for(int i=0;i<20;) {
                         auto [resbody,code]=ContextHTTPS::getContext().putRequest(hostnames[con->hostindex],port,failure,std::span((const char *)body.data(),body.size()));
                         if(code==200) {
                             LOGGERICE("%s %d: OK FAILURE\n",host.getICEname().data(),host.side);
                             break;
                             }
                        LOGGERICE("%s %d: ERROR FAILURE code=%d\n",host.getICEname().data(),host.side,code);
-                       sleep(20);
+                       sleep(++i*2);
                        }
                     con->notConnected();
                     con->endConnectionHere();
@@ -523,6 +617,22 @@ class initJuice {
          };
      };
 
+#ifdef TWILIOACCOUNT 
+consteval int compilationDate() {
+    constexpr char d[] = __DATE__;
+    constexpr const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    int month = 1;
+    for (int i = 0; i < 12; ++i)
+        if (d[0] == months[i][0] && d[1] == months[i][1] && d[2] == months[i][2]) {
+            month = i + 1;
+            break;
+            }
+    int day = (d[4] == ' ' ? 0 : d[4] - '0') * 10 + d[5] - '0';
+    int year = (d[7] - '0') * 1000 + (d[8] - '0') * 100 + (d[9] - '0') * 10 + d[10] - '0';
+    return year * 10000 + month * 100 + day;
+}
+
+
 static std::pair<const char *,const char *> getloginpass(char *twiliooutput,const int len) {
      char *endstr=twiliooutput+len;
      char *startsearch=endstr-300;
@@ -549,6 +659,7 @@ static std::pair<const char *,const char *> getloginpass(char *twiliooutput,cons
         }
      return {};
     }
+#endif
 extern time_t oldTwilioTimes;
 time_t oldTwilioTimes=0;
 #include "twilio.hpp"
@@ -589,31 +700,35 @@ juice_agent *createAgent(int allindex) {
         turn_servers=default_turn_servers;
 
 #ifdef TWILIOACCOUNT 
-        {
-        static std::mutex mut;
-        std::lock_guard<std::mutex> lck(mut);
-        auto now=time(nullptr);
-        if(now>=oldTwilioTimes) {
-                const auto url{"https://api.twilio.com/2010-04-01/Accounts/" TWILIOACCOUNT  "/Tokens.json"sv};
-                const std::span<const char> input{(const char *)nullptr,0};
-                const std::string_view header{"\r\nAuthorization: Basic " USERPASSBASE64 };
-                auto [resbody,code]=ContextHTTPS::getContext().postRequest("api.twilio.com",443,url,input,header);
-                if(code==201) {
-                     auto [user,pass]=getloginpass(resbody.data(),resbody.size());
-                     LOGGER("TWILIO: user=%s pass=%s\n",user,pass);
-                     static std::string username;
-                     static std::string password;
-                     username=user;
-                     password=pass;
-                     oldTwilioTimes=now+24*60*60;
-                     default_turn_servers[2].username=username.data();
-                     default_turn_servers[2].password=password.data();
+constexpr const int comptime=compilationDate() ;
+if constexpr (comptime < 20270228) {
+        LOGGER("twilio compiled before %d\n",comptime);
+        const auto now=time(nullptr);
+        if(now< 1803769200) {
+            static std::mutex mut;
+            std::lock_guard<std::mutex> lck(mut);
+            if(now>=oldTwilioTimes) {
+                    const auto url{"https://api.twilio.com/2010-04-01/Accounts/" TWILIOACCOUNT  "/Tokens.json"sv};
+                    const std::span<const char> input{(const char *)nullptr,0};
+                    const std::string_view header{"\r\nAuthorization: Basic " USERPASSBASE64 };
+                    auto [resbody,code]=ContextHTTPS::getContext().postRequest("api.twilio.com",443,url,input,header);
+                    if(code==201) {
+                         auto [user,pass]=getloginpass(resbody.data(),resbody.size());
+                         LOGGER("TWILIO: user=%s pass=%s\n",user,pass);
+                         static std::string username;
+                         static std::string password;
+                         username=user;
+                         password=pass;
+                         oldTwilioTimes=now+24*60*60;
+                         default_turn_servers[2].username=username.data();
+                         default_turn_servers[2].password=password.data();
+                         }
+                   else {
+                      LOGGER("TWILIO ERROR: code=%d\n",code);
+                      }
                      }
-               else {
-                  LOGGER("TWILIO ERROR: code=%d\n",code);
-                  }
-                 }
-           }
+               }
+             }
 #endif
         }
       juice_config_t config1{
@@ -654,6 +769,7 @@ static bool waitonDescription(juice_agent *agent,int allindex,std::string_view c
         LOGGERICE("getdescription: ERROR %s size=%d side=%d\n",commonLabel.data(),commonLabel.size(),side);
         return false;
         }
+   int retries=0;
     while(true) {
         auto [resbody,code]=ContextHTTPS::getContext().getRequest(hostname,port,description,sdpdata.getSpan());
         if(code== 200) {
@@ -670,7 +786,7 @@ static bool waitonDescription(juice_agent *agent,int allindex,std::string_view c
             }
          else {
             LOGGERICE("getdescription failure %s %d: %s returns code=%d\n",commonLabel.data(),side,sdpdata.data(),code); 
-            sleep(20);
+            sleep(++retries*2);
             }
         const auto lastfailedtime=getConnectTime(allindex);
         if(lastfailedtime&&(time(nullptr)-lastfailedtime)>maxconnectionunused) {
@@ -691,7 +807,8 @@ static  bool putDescription(int allindex,juice_agent *agent,std::string_view com
     if(commonLabel.size()<10) { //TODO: becomes 16 later
         LOGGERICE("putdescription: ERROR %s size=%d side=%d\n",commonLabel.data(),commonLabel.size(),side);
         return false;
-        }
+       }
+    int retries=0;
     while(true) {
             LOGGERICE("putdescription: %s %d: Local description:\n%s\n",commonLabel.data(),side, con->sdp);
             auto [resbody,code]=ContextHTTPS::getContext().putRequest(hostname,port,description,std::span((const char *)sdpdata.data(),sdpdata.size()));
@@ -710,7 +827,7 @@ static  bool putDescription(int allindex,juice_agent *agent,std::string_view com
                 }
              else {
                 LOGGERICE("putdescription: %s %d: Http error code=%d\n",commonLabel.data(),side,code);
-                sleep(20);
+                sleep(++retries*2);
                 }
 
         const auto lastfailedtime=getConnectTime(allindex);
