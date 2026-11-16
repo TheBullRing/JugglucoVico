@@ -1,0 +1,19 @@
+﻿# Build outputs
+.gradle/
+.kotlin/
+build/
+Common/build/
+Common/.cxx/
+.cxx/
+*.log
+
+# Local/IDE
+.idea/
+*.iml
+
+# Native libs not tracked (provided locally)
+Common/src/main/jniLibs/
+
+# Temporary helper scripts
+fix_*.sh
+fix_*.pl
